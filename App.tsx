@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Header } from './components/Header';
 import { HomePage } from './pages/HomePage';
 import { SalesPage } from './pages/SalesPage';
@@ -320,7 +320,7 @@ function App() {
         return summary;
     }, [traders, traderTransactions]);
 
-    const handleExportData = () => {
+    const handleExportData = useCallback((isAutoBackup: boolean = false): boolean => {
       try {
           const wb = XLSX.utils.book_new();
 
@@ -397,18 +397,50 @@ function App() {
           });
           
           if (wb.SheetNames.length === 0) {
-              alert("لا توجد بيانات لتصديرها.");
-              return;
+              if (!isAutoBackup) {
+                  alert("لا توجد بيانات لتصديرها.");
+              }
+              return false;
           }
 
-          const today = new Date().toISOString().split('T')[0];
-          XLSX.writeFile(wb, `alfadi-backup-${today}.xlsx`);
+          const filename = isAutoBackup 
+            ? 'alfadi-daily-backup.xlsx' 
+            : `alfadi-backup-${new Date().toISOString().split('T')[0]}.xlsx`;
+            
+          XLSX.writeFile(wb, filename);
+          return true;
 
       } catch (error) {
           console.error("Failed to export data:", error);
-          alert("فشل تصدير البيانات. تحقق من الكونسول لمزيد من التفاصيل.");
+          if (!isAutoBackup) {
+            alert("فشل تصدير البيانات. تحقق من الكونسول لمزيد من التفاصيل.");
+          }
+          return false;
       }
-    };
+    }, [sales, transactions, traders, traderTransactions]);
+
+    useEffect(() => {
+        const checkAutoBackup = () => {
+            const lastBackupTimestamp = localStorage.getItem('lastAutoBackupTimestamp');
+            const now = new Date().getTime();
+            const twentyFourHours = 24 * 60 * 60 * 1000;
+
+            if (!lastBackupTimestamp || (now - parseInt(lastBackupTimestamp, 10)) > twentyFourHours) {
+                console.log("Attempting automatic daily backup...");
+                const success = handleExportData(true);
+                if (success) {
+                    console.log("Automatic backup successful.");
+                    localStorage.setItem('lastAutoBackupTimestamp', now.toString());
+                } else {
+                    console.log("Automatic backup skipped (no data or error).");
+                }
+            }
+        };
+
+        const timer = setTimeout(checkAutoBackup, 3000); 
+        return () => clearTimeout(timer);
+    }, [handleExportData]);
+
 
     const triggerImport = () => {
       fileInputRef.current?.click();
@@ -630,7 +662,7 @@ function App() {
       <Header 
         activePage={activePage} 
         setActivePage={setActivePage} 
-        onExport={handleExportData}
+        onExport={() => handleExportData(false)}
         onImport={triggerImport}
       />
       <main className="p-4 sm:p-6 md:p-8">
