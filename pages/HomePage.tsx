@@ -1,14 +1,10 @@
 
 import React, { useState, useMemo } from 'react';
-import { GoogleGenAI } from "@google/genai";
 import type { Transaction, Invoice, SalesSummary, SalesSummaryItem, PurchasesSummary, LogEntry, RecordType } from '../types';
 import { StatCard } from '../components/StatCard';
 import { TransactionTable } from '../components/TransactionTable';
 import { ChartPieIcon, ShoppingBagIcon, CashIcon, TrendingUpIcon, DocumentReportIcon, ScaleIcon, SparklesIcon } from '../components/icons/Icons';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
-
-// Initialize the Gemini AI model
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 type TimeRange = 'today' | 'week' | 'month' | 'year' | 'custom' | 'all';
 type SummaryTab = 'store' | 'online' | 'buyBack' | 'silver';
@@ -254,11 +250,22 @@ ${JSON.stringify(dataForAI)}
 
 اكتب ردك باللغة العربية.
 `;
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-flash',
-            contents: prompt,
+        
+        const response = await fetch('/api/ask-gemini', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ prompt: prompt })
         });
-        setInsights(response.text);
+        
+        const data = await response.json();
+
+        if (!response.ok) {
+            throw new Error(data.message || 'فشل الاتصال بالخادم');
+        }
+
+        setInsights(data.response);
 
     } catch (error) {
         console.error("Error generating insights:", error);
@@ -632,8 +639,9 @@ ${JSON.stringify(dataForAI)}
         onDelete={onDeleteRecord}
         onEdit={onEditRecord}
         onRowClick={(item) => {
+// FIX: Check for recordType to correctly identify an invoice and pass it to onInvoiceClick.
             if (item.recordType === 'invoice') {
-                onInvoiceClick(item as Invoice);
+                onInvoiceClick(item);
             }
         }}
       />

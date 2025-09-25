@@ -1,13 +1,9 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { GoogleGenAI } from "@google/genai";
 import type { Transaction, InvoiceItem, SaleType, ProductCategory, Karat, WorkmanshipType, Invoice, SaleChannel } from '../types';
 import { TransactionType } from '../types';
 import { TransactionTable } from '../components/TransactionTable';
 import { PlusIcon, TrashIcon, PencilIcon, SparklesIcon, WhatsAppIcon } from '../components/icons/Icons';
-
-// Initialize the Gemini AI model
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 interface SalesPageProps {
   sales: Invoice[];
@@ -233,11 +229,22 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
         setIsGenerating(true);
         try {
             const prompt = `اكتب وصفاً موجزاً وأنيقاً لقطعة مجوهرات ليتم استخدامها في فاتورة. القطعة هي ${category === 'GOLD' ? `ذهب عيار ${karat}` : 'فضة'} بوزن ${weight} جرام. اجعل الوصف باللغة العربية.`;
-            const response = await ai.models.generateContent({
-                model: 'gemini-2.5-flash',
-                contents: prompt,
+            
+            const response = await fetch('/api/ask-gemini', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ prompt: prompt })
             });
-            setDescription(response.text);
+    
+            const data = await response.json();
+            
+            if (!response.ok) {
+                throw new Error(data.message || "Failed to get response from server");
+            }
+    
+            setDescription(data.response);
         } catch (error) {
             console.error("Error generating description:", error);
             alert("فشل إنشاء الوصف. يرجى المحاولة مرة أخرى.");
@@ -526,8 +533,10 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
         title="سجل الفواتير المحفوظة"
         colorClass="bg-green-100"
         onRowClick={(item) => {
-            if ('items' in item) {
-                onInvoiceClick(item as Invoice);
+            // FIX: Changed check from 'items' in item to item.recordType === 'invoice' for consistency
+            // and better type safety after updating TransactionTable's onRowClick prop type.
+            if (item.recordType === 'invoice') {
+                onInvoiceClick(item);
             }
         }}
       />

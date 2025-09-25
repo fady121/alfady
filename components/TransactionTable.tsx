@@ -8,7 +8,8 @@ interface TransactionTableProps {
   transactions: LogEntry[];
   onDelete?: (id: string, type: RecordType | TransactionType) => void;
   onEdit?: (id: string, type: RecordType) => void;
-  onRowClick?: (item: Transaction | Invoice) => void;
+  // FIX: Updated type to LogEntry to allow access to recordType property in parent components.
+  onRowClick?: (item: LogEntry) => void;
   title: string;
   colorClass: string;
 }

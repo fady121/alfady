@@ -1,6 +1,7 @@
 
 import React, { useMemo, useState, useEffect } from 'react';
-import type { Invoice, Transaction } from '../types';
+// FIX: Import LogEntry type.
+import type { Invoice, Transaction, LogEntry } from '../types';
 import { TransactionType } from '../types';
 import { TransactionTable } from '../components/TransactionTable';
 import { CashIcon, UserGroupIcon, ReceiptRefundIcon, SearchIcon, ArrowCircleDownIcon, ArrowCircleUpIcon } from '../components/icons/Icons';
@@ -121,8 +122,11 @@ export const TreasuryPage: React.FC<TreasuryPageProps> = ({ sales, transactions,
     handlePaymentInputChange(invoice.id, ''); // Clear input
   };
 
-  const allTransactionsForLog = useMemo(() => {
-    return [...sales, ...transactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  // FIX: Map sales and transactions to LogEntry to match the TransactionTable's expected prop type.
+  const allTransactionsForLog = useMemo<LogEntry[]>(() => {
+    const mappedSales: LogEntry[] = sales.map(s => ({ ...s, recordType: 'invoice' }));
+    const mappedTransactions: LogEntry[] = transactions.map(t => ({ ...t, recordType: 'general' }));
+    return [...mappedSales, ...mappedTransactions].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [sales, transactions]);
 
   const customerDebts = useMemo(() => {
