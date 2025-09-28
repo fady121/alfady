@@ -1,7 +1,6 @@
-
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import type { Trader, TraderCategory, TraderTransaction } from '../types';
-import { PlusIcon, TrashIcon, UserCircleIcon, ScaleIcon, PencilIcon } from '../components/icons/Icons';
+import { PlusIcon, TrashIcon, PencilIcon, SearchIcon } from '../components/icons/Icons';
 
 interface PurchasesPageProps {
   traders: Trader[];
@@ -10,7 +9,6 @@ interface PurchasesPageProps {
   deleteTrader: (id: string) => void;
   traderTransactions: TraderTransaction[];
   addTraderTransaction: (transaction: Omit<TraderTransaction, 'id'>) => void;
-  // FIX: Corrected the union type syntax in Omit. The `or` keyword is not valid in this context and has been replaced with `|`.
   updateTraderTransaction: (id: string, transaction: Omit<TraderTransaction, 'id' | 'traderId'>) => void;
   deleteTraderTransaction: (id: string) => void;
   recordToEditId: string | null;
@@ -38,7 +36,7 @@ const formatCurrency = (amount: number) => {
     }).format(amount);
 };
 
-const TraderCard: React.FC<{
+const TraderListItem: React.FC<{
     trader: Trader;
     account: any;
     isSelected: boolean;
@@ -54,53 +52,45 @@ const TraderCard: React.FC<{
     const cashOwedToTrader = cashBalance > 0.01;
     const cashOwedByTrader = cashBalance < -0.01;
 
-    const baseClasses = "p-4 rounded-lg cursor-pointer transition-all duration-200 border-2";
-    const selectedClasses = isGold ? 'bg-amber-50 border-amber-400 shadow-lg' : 'bg-slate-50 border-slate-400 shadow-lg';
-    const unselectedClasses = isGold ? 'bg-amber-50/50 border-transparent hover:bg-amber-50 hover:shadow-md' : 'bg-slate-50/50 border-transparent hover:bg-slate-50 hover:shadow-md';
+
+    const baseClasses = "w-full text-right p-3 rounded-lg cursor-pointer transition-all duration-150 border";
+    const selectedClasses = isGold ? 'bg-amber-100 border-amber-400' : 'bg-slate-100 border-slate-400';
+    const unselectedClasses = 'bg-white border-gray-200 hover:bg-gray-50 hover:border-gray-300';
     
     const theme = {
-        bg: isGold ? 'bg-amber-100' : 'bg-slate-200',
-        text: isGold ? 'text-amber-800' : 'text-slate-800',
+        tagBg: isGold ? 'bg-amber-200' : 'bg-slate-200',
+        tagText: isGold ? 'text-amber-800' : 'text-slate-800',
     };
 
     return (
         <div onClick={onSelect} className={`${baseClasses} ${isSelected ? selectedClasses : unselectedClasses}`}>
-            <div className="flex justify-between items-start">
-                <div className="flex items-center">
-                    <UserCircleIcon className={`h-10 w-10 ${isGold ? 'text-amber-500' : 'text-slate-500'} me-3`} />
-                    <div>
-                        <p className={`font-bold ${theme.text}`}>{trader.name}</p>
-                        <p className="text-sm text-gray-600">{trader.phone}</p>
-                    </div>
+            <div className="flex justify-between items-center">
+                <div>
+                    <p className="font-bold text-gray-800">{trader.name}</p>
+                    <p className="text-sm text-gray-500">{trader.phone}</p>
                 </div>
-                <div className="flex items-center">
-                    <span className={`px-2 py-1 text-xs font-semibold rounded-full ${theme.bg} ${theme.text}`}>
+                <div className="flex items-center gap-2">
+                    <span className={`px-2 py-0.5 text-xs font-semibold rounded-full ${theme.tagBg} ${theme.tagText}`}>
                         {isGold ? 'ذهب' : 'فضة'}
                     </span>
-                    <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="text-blue-500 hover:text-blue-700 p-1 ms-1 rounded-full hover:bg-blue-100"><PencilIcon size={5}/></button>
-                    <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="text-red-500 hover:text-red-700 p-1 ms-2 rounded-full hover:bg-red-100"><TrashIcon/></button>
+                    <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="text-blue-500 hover:text-blue-700 p-1 rounded-full hover:bg-blue-100"><PencilIcon size={4}/></button>
+                    <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-100"><TrashIcon size={4}/></button>
                 </div>
             </div>
-            <div className="mt-3 pt-3 border-t text-center">
-                <p className="text-sm font-medium text-gray-500">الرصيد الحالي</p>
+            <div className="mt-2 pt-2 border-t border-gray-200/60 text-xs">
+                <p className="font-semibold text-gray-600">الرصيد:</p>
                 {isGold ? (
-                    <div className="grid grid-cols-2 gap-2 mt-1">
-                        <div>
-                            <p className="text-xs text-gray-500">رصيد الذهب</p>
-                            <p className={`text-lg font-bold ${isOwedToTrader ? 'text-green-600' : isOwedByTrader ? 'text-red-600' : 'text-gray-800'}`}>
-                                {formatWeight(Math.abs(balance))} {isOwedToTrader ? 'له' : isOwedByTrader ? 'عليه' : ''}
-                            </p>
-                        </div>
-                        <div>
-                            <p className="text-xs text-gray-500">رصيد النقدية</p>
-                            <p className={`text-lg font-bold ${cashOwedToTrader ? 'text-green-600' : cashOwedByTrader ? 'text-red-600' : 'text-gray-800'}`}>
-                                {formatCurrency(Math.abs(cashBalance))} {cashOwedToTrader ? 'له' : cashOwedByTrader ? 'عليه' : ''}
-                            </p>
-                        </div>
+                    <div className="flex justify-between items-center mt-1">
+                        <span>ذهب: <span className={`font-bold ${isOwedToTrader ? 'text-red-600' : isOwedByTrader ? 'text-green-600' : 'text-gray-800'}`}>
+                             {formatWeight(Math.abs(balance))} {isOwedToTrader ? 'علينا' : isOwedByTrader ? 'لهم' : ''}
+                        </span></span>
+                        <span>نقدية: <span className={`font-bold ${cashOwedToTrader ? 'text-red-600' : cashOwedByTrader ? 'text-green-600' : 'text-gray-800'}`}>
+                             {formatCurrency(Math.abs(cashBalance))} {cashOwedToTrader ? 'علينا' : cashOwedByTrader ? 'لهم' : ''}
+                        </span></span>
                     </div>
                 ) : (
-                    <p className={`text-xl font-bold ${isOwedToTrader ? 'text-green-600' : isOwedByTrader ? 'text-red-600' : 'text-gray-800'}`}>
-                       {formatCurrency(Math.abs(balance))} {isOwedToTrader ? 'له' : isOwedByTrader ? 'عليه' : ''}
+                    <p className={`font-bold mt-1 ${isOwedToTrader ? 'text-red-600' : isOwedByTrader ? 'text-green-600' : 'text-gray-800'}`}>
+                       {formatCurrency(Math.abs(balance))} {isOwedToTrader ? 'علينا' : isOwedByTrader ? 'لهم' : ''}
                     </p>
                 )}
             </div>
@@ -124,6 +114,8 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({
     const [selectedTrader, setSelectedTrader] = useState<Trader | null>(null);
     const [editingTransactionId, setEditingTransactionId] = useState<string | null>(null);
     const [editingTrader, setEditingTrader] = useState<Trader | null>(null);
+    const [searchQuery, setSearchQuery] = useState('');
+    const [selectedCategory, setSelectedCategory] = useState<TraderCategory>('GOLD');
     
     // Trader Form State
     const [traderName, setTraderName] = useState('');
@@ -139,8 +131,35 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({
     const [cashPayment, setCashPayment] = useState('');
     const [silverPrice, setSilverPrice] = useState('');
     
-    const goldTraders = useMemo(() => traders.filter(t => t.category === 'GOLD'), [traders]);
-    const silverTraders = useMemo(() => traders.filter(t => t.category === 'SILVER'), [traders]);
+    const clearTransactionForm = useCallback(() => {
+        setEditingTransactionId(null);
+        setTransDate(new Date().toISOString().split('T')[0]);
+        setTransDesc('');
+        setWorkWeight('');
+        setScrapWeight('');
+        setWorkmanshipFee('');
+        setCashPayment('');
+        setSilverPrice('');
+    }, []);
+
+    useEffect(() => {
+        // When switching categories, if the selected trader is not in the new category, deselect them.
+        if (selectedTrader && selectedTrader.category !== selectedCategory) {
+            setSelectedTrader(null);
+            clearTransactionForm();
+        }
+    }, [selectedCategory, selectedTrader, clearTransactionForm]);
+
+    const filteredTraders = useMemo(() => {
+        return traders
+            .filter(trader =>
+                trader.category === selectedCategory &&
+                (trader.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                (trader.phone && trader.phone.includes(searchQuery)))
+            )
+            .sort((a, b) => a.name.localeCompare(b.name));
+    }, [traders, searchQuery, selectedCategory]);
+
 
     useEffect(() => {
         if (editingTrader) {
@@ -175,16 +194,6 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({
         }
     };
     
-    const clearTransactionForm = useCallback(() => {
-        setEditingTransactionId(null);
-        setTransDate(new Date().toISOString().split('T')[0]);
-        setTransDesc('');
-        setWorkWeight('');
-        setScrapWeight('');
-        setWorkmanshipFee('');
-        setCashPayment('');
-        setSilverPrice('');
-    }, []);
 
     const handleSaveTransaction = (e: React.FormEvent) => {
         e.preventDefault();
@@ -382,8 +391,8 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({
                     {!isGoldTrader && (
                         <div className="bg-gray-100 p-3 rounded-md text-center">
                             <p className="text-sm text-gray-600">الرصيد المتبقي (لهذه المعاملة)</p>
-                            <p className={`text-2xl font-bold ${silverTransactionBalance > 0 ? 'text-green-600' : silverTransactionBalance < 0 ? 'text-red-600' : 'text-gray-800'}`}>
-                                {formatCurrency(Math.abs(silverTransactionBalance))} {silverTransactionBalance > 0 ? 'له' : silverTransactionBalance < 0 ? 'عليه' : ''}
+                            <p className={`text-2xl font-bold ${silverTransactionBalance > 0 ? 'text-red-600' : silverTransactionBalance < 0 ? 'text-green-600' : 'text-gray-800'}`}>
+                                {formatCurrency(Math.abs(silverTransactionBalance))} {silverTransactionBalance > 0 ? 'علينا' : silverTransactionBalance < 0 ? 'لهم' : ''}
                             </p>
                         </div>
                     )}
@@ -448,48 +457,64 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({
 
                     {/* Traders Lists */}
                     <div className="border-t pt-6">
-                         <div className="space-y-6 max-h-[60vh] overflow-y-auto pr-2 -mr-2">
-                             <div>
-                                <h3 className="text-xl font-bold mb-4 text-amber-700 border-b-2 border-amber-200 pb-2">تجار الذهب</h3>
-                                <div className="space-y-3">
-                                    {goldTraders.length > 0 ? goldTraders.map(trader => (
-                                        <TraderCard 
-                                            key={trader.id}
-                                            trader={trader}
-                                            account={traderAccounts[trader.id]}
-                                            isSelected={selectedTrader?.id === trader.id}
-                                            onSelect={() => { setSelectedTrader(trader); clearTransactionForm(); }}
-                                            onEdit={() => setEditingTrader(trader)}
-                                            onDelete={() => deleteTrader(trader.id)}
-                                        />
-                                    )) : <p className="text-center text-gray-500 py-4">لم يتم إضافة تجار ذهب.</p>}
-                                </div>
-                             </div>
-                             <div>
-                                <h3 className="text-xl font-bold mb-4 text-slate-700 border-b-2 border-slate-200 pb-2">تجار الفضة</h3>
-                                <div className="space-y-3">
-                                    {silverTraders.length > 0 ? silverTraders.map(trader => (
-                                        <TraderCard 
-                                            key={trader.id}
-                                            trader={trader}
-                                            account={traderAccounts[trader.id]}
-                                            isSelected={selectedTrader?.id === trader.id}
-                                            onSelect={() => { setSelectedTrader(trader); clearTransactionForm(); }}
-                                            onEdit={() => setEditingTrader(trader)}
-                                            onDelete={() => deleteTrader(trader.id)}
-                                        />
-                                    )) : <p className="text-center text-gray-500 py-4">لم يتم إضافة تجار فضة.</p>}
-                                </div>
-                             </div>
-                         </div>
+                        <h3 className="text-xl font-bold mb-4 text-gray-800">قائمة التجار</h3>
+                        
+                        <div className="grid grid-cols-2 gap-2 mb-4">
+                            <button
+                                onClick={() => setSelectedCategory('GOLD')}
+                                className={`w-full py-2 px-4 rounded-md font-semibold transition-colors ${
+                                    selectedCategory === 'GOLD'
+                                        ? 'bg-amber-500 text-white shadow'
+                                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                }`}
+                            >
+                                تجار الذهب
+                            </button>
+                            <button
+                                onClick={() => setSelectedCategory('SILVER')}
+                                className={`w-full py-2 px-4 rounded-md font-semibold transition-colors ${
+                                    selectedCategory === 'SILVER'
+                                        ? 'bg-slate-500 text-white shadow'
+                                        : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                }`}
+                            >
+                                تجار الفضة
+                            </button>
+                        </div>
+                        
+                        <div className="relative mb-4">
+                            <input
+                                type="text"
+                                placeholder="ابحث بالاسم أو رقم التليفون..."
+                                value={searchQuery}
+                                onChange={e => setSearchQuery(e.target.value)}
+                                className="w-full p-2 ps-10 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                            />
+                            <div className="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
+                                <SearchIcon className="text-gray-400"/>
+                            </div>
+                        </div>
+                        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2 -mr-2">
+                             {filteredTraders.length > 0 ? filteredTraders.map(trader => (
+                                <TraderListItem 
+                                    key={trader.id}
+                                    trader={trader}
+                                    account={traderAccounts[trader.id]}
+                                    isSelected={selectedTrader?.id === trader.id}
+                                    onSelect={() => { setSelectedTrader(trader); clearTransactionForm(); }}
+                                    onEdit={() => setEditingTrader(trader)}
+                                    onDelete={() => deleteTrader(trader.id)}
+                                />
+                            )) : <p className="text-center text-gray-500 py-4">لا يوجد تجار مطابقون للبحث.</p>}
+                        </div>
                     </div>
                 </div>
                 
                 {selectedTrader ? renderTransactionForm() : (
                     <div className="lg:col-span-3 bg-gray-50 p-6 rounded-lg shadow-inner flex flex-col items-center justify-center text-center">
-                        <ScaleIcon className="h-16 w-16 text-gray-400 mb-4" />
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-16 w-16 text-gray-400 mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1"><path strokeLinecap="round" strokeLinejoin="round" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.653-.125-1.274-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.653.125-1.274.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm-9 3a2 2 0 11-4 0 2 2 0 014 0z" /></svg>
                         <h3 className="text-xl font-bold text-gray-700">اختر تاجرًا</h3>
-                        <p className="text-gray-500 mt-2">اختر تاجرًا من القائمة على اليمين لعرض أو إضافة معاملاته.</p>
+                        <p className="text-gray-500 mt-2">اختر تاجرًا من القائمة لعرض أو إضافة معاملاته.</p>
                     </div>
                 )}
             </div>
