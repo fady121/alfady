@@ -4,6 +4,7 @@ import { HomePage } from './pages/HomePage';
 import { SalesPage } from './pages/SalesPage';
 import { PurchasesPage } from './pages/PurchasesPage';
 import { TreasuryPage } from './pages/TreasuryPage';
+import { LoginPage } from './pages/LoginPage';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import type { Page, Transaction, Invoice, SalesSummary, Trader, TraderTransaction, PurchasesSummary, LogEntry, RecordType, TraderTransactionWithDetails, TraderCategory, InvoiceItem, Karat } from './types';
 import { TransactionType } from './types';
@@ -12,6 +13,7 @@ import { TransactionType } from './types';
 declare var XLSX: any;
 
 function App() {
+  const [isLoggedIn, setIsLoggedIn] = useLocalStorage('isLoggedIn', false);
   const [activePage, setActivePage] = useState<Page>('home');
   const [sales, setSales] = useLocalStorage<Invoice[]>('sales', []);
   const [transactions, setTransactions] = useLocalStorage<Transaction[]>('transactions', []);
@@ -21,6 +23,15 @@ function App() {
   const [recordToEditId, setRecordToEditId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const handleLoginSuccess = () => {
+    setIsLoggedIn(true);
+  };
+
+  const handleLogout = () => {
+    if (window.confirm('هل أنت متأكد من تسجيل الخروج؟')) {
+      setIsLoggedIn(false);
+    }
+  };
 
   // FIX: Updated function signature to be more specific, allowing for correct type narrowing.
   // This resolves an issue where the compiler couldn't infer all properties of an Invoice.
@@ -650,6 +661,10 @@ function App() {
     }
   };
 
+  if (!isLoggedIn) {
+    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800">
       <input
@@ -664,6 +679,7 @@ function App() {
         setActivePage={setActivePage} 
         onExport={() => handleExportData(false)}
         onImport={triggerImport}
+        onLogout={handleLogout}
       />
       <main className="p-4 sm:p-6 md:p-8">
         {renderPage()}

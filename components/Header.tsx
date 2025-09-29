@@ -1,15 +1,16 @@
 import React from 'react';
 import type { Page } from '../types';
-import { CashIcon, ChartPieIcon, HomeIcon, ShoppingBagIcon, DownloadIcon, UploadIcon } from './icons/Icons';
+import { CashIcon, ChartPieIcon, HomeIcon, ShoppingBagIcon, DownloadIcon, UploadIcon, LogoutIcon } from './icons/Icons';
 
 interface HeaderProps {
   activePage: Page;
   setActivePage: (page: Page) => void;
   onExport: () => void;
   onImport: () => void;
+  onLogout?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ activePage, setActivePage, onExport, onImport }) => {
+export const Header: React.FC<HeaderProps> = ({ activePage, setActivePage, onExport, onImport, onLogout }) => {
   const navItems = [
     { id: 'home', label: 'الرئيسية', icon: <HomeIcon /> },
     { id: 'sales', label: 'المبيعات', icon: <ChartPieIcon /> },
@@ -35,6 +36,16 @@ export const Header: React.FC<HeaderProps> = ({ activePage, setActivePage, onExp
             <DownloadIcon size={5} className="me-2" />
             <span>تنزيل نسخة</span>
         </button>
+        {onLogout && (
+             <button
+                onClick={onLogout}
+                className="flex items-center px-3 py-2 text-sm font-medium text-gray-600 hover:bg-red-50 hover:text-red-700 rounded-md transition-colors duration-200"
+                title="تسجيل الخروج"
+            >
+                <LogoutIcon size={5} className="me-2" />
+                <span>خروج</span>
+            </button>
+        )}
     </div>
   );
 
