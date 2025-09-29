@@ -72,6 +72,7 @@ export interface InvoiceItem {
   workmanshipType?: WorkmanshipType;
   workmanshipValue?: number;
   discountPercentage?: number;
+  cashBackPerGram?: number;
   total: number;
 }
 

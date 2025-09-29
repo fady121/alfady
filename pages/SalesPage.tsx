@@ -3,7 +3,7 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import type { Transaction, InvoiceItem, SaleType, ProductCategory, Karat, WorkmanshipType, Invoice, SaleChannel } from '../types';
 import { TransactionType } from '../types';
 import { TransactionTable } from '../components/TransactionTable';
-import { PlusIcon, TrashIcon, PencilIcon, SparklesIcon, WhatsAppIcon } from '../components/icons/Icons';
+import { PlusIcon, TrashIcon, PencilIcon, SparklesIcon, WhatsAppIcon, SearchIcon } from '../components/icons/Icons';
 
 interface SalesPageProps {
   sales: Invoice[];
@@ -64,6 +64,7 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
     const [editingItemId, setEditingItemId] = useState<string | null>(null);
     const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
+    const [searchQuery, setSearchQuery] = useState('');
 
     // Form state for item
     const [saleType, setSaleType] = useState<SaleType>('SELL');
@@ -75,6 +76,7 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
     const [workmanshipType, setWorkmanshipType] = useState<WorkmanshipType>('PER_GRAM');
     const [workmanshipValue, setWorkmanshipValue] = useState('');
     const [discount, setDiscount] = useState('');
+    const [cashBack, setCashBack] = useState('');
 
     // Form state for invoice details
     const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0]);
@@ -91,21 +93,28 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
         const numPricePerGram = parseFloat(pricePerGram) || 0;
         if (numWeight <= 0) return 0;
 
-        const basePrice = numWeight * numPricePerGram;
-
         if (saleType === 'BUY_BACK') {
-            const numDiscount = parseFloat(discount) || 0;
-            const discountAmount = basePrice * (numDiscount / 100);
-            return basePrice - discountAmount;
+            if (category === 'GOLD' && karat === 24) {
+                const numCashBack = parseFloat(cashBack) || 0;
+                const effectivePrice = numPricePerGram + numCashBack;
+                return numWeight * effectivePrice;
+            } else {
+                const basePrice = numWeight * numPricePerGram;
+                const numDiscount = parseFloat(discount) || 0;
+                const discountAmount = basePrice * (numDiscount / 100);
+                return basePrice - discountAmount;
+            }
         }
 
+        // SaleType === 'SELL' logic remains the same
+        const basePrice = numWeight * numPricePerGram;
         const numWorkmanshipValue = parseFloat(workmanshipValue) || 0;
         const workmanshipCost = workmanshipType === 'PER_GRAM' 
             ? numWeight * numWorkmanshipValue
             : numWorkmanshipValue;
         return basePrice + workmanshipCost;
 
-    }, [weight, pricePerGram, workmanshipType, workmanshipValue, saleType, discount]);
+    }, [weight, pricePerGram, workmanshipType, workmanshipValue, saleType, discount, category, karat, cashBack]);
 
     const salesTotalInInvoice = useMemo(() => invoiceItems.filter(i => i.saleType === 'SELL').reduce((sum, item) => sum + item.total, 0), [invoiceItems]);
     const purchasesTotalInInvoice = useMemo(() => invoiceItems.filter(i => i.saleType === 'BUY_BACK').reduce((sum, item) => sum + item.total, 0), [invoiceItems]);
@@ -158,6 +167,7 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
         setPricePerGram('');
         setWorkmanshipValue('');
         setDiscount('');
+        setCashBack('');
         setEditingItemId(null);
     }, []);
 
@@ -218,6 +228,7 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
         setWorkmanshipType(item.workmanshipType ?? 'PER_GRAM');
         setWorkmanshipValue(String(item.workmanshipValue ?? ''));
         setDiscount(String(item.discountPercentage ?? ''));
+        setCashBack(String(item.cashBackPerGram ?? ''));
         window.scrollTo({ top: 0, behavior: 'smooth' });
     }, []);
 
@@ -266,8 +277,9 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
             pricePerGram: parseFloat(pricePerGram),
             total: itemTotal,
             workmanshipType: saleType === 'SELL' ? workmanshipType : undefined,
-            workmanshipValue: saleType === 'SELL' ? parseFloat(workmanshipValue) : undefined,
-            discountPercentage: saleType === 'BUY_BACK' ? parseFloat(discount) : undefined,
+            workmanshipValue: saleType === 'SELL' ? (parseFloat(workmanshipValue) || undefined) : undefined,
+            discountPercentage: saleType === 'BUY_BACK' && !(category === 'GOLD' && karat === 24) ? (parseFloat(discount) || undefined) : undefined,
+            cashBackPerGram: saleType === 'BUY_BACK' && category === 'GOLD' && karat === 24 ? (parseFloat(cashBack) || undefined) : undefined,
         };
 
         if (editingItemId) {
@@ -328,6 +340,19 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
     };
     
     const isPhoneValid = customerPhone.trim().length === 11;
+
+    const filteredSales = useMemo(() => {
+        if (!searchQuery.trim()) {
+            return sales;
+        }
+
+        const lowerCaseQuery = searchQuery.toLowerCase().trim();
+
+        return sales.filter(inv =>
+            inv.customer.name.toLowerCase().includes(lowerCaseQuery) ||
+            inv.customer.phone.includes(lowerCaseQuery)
+        );
+    }, [sales, searchQuery]);
 
     return (
     <div className="space-y-6">
@@ -398,10 +423,19 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
                         </div>
                     </div>
                 ) : (
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">الخصم (%)</label>
-                         <input type="number" value={discount} onChange={e => setDiscount(e.target.value)} placeholder="0" className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" step="0.1" min="0" />
-                    </div>
+                    <>
+                        {category === 'GOLD' && karat === 24 ? (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">كاش باك (يضاف لسعر الجرام)</label>
+                                <input type="number" value={cashBack} onChange={e => setCashBack(e.target.value)} placeholder="0.00" className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-amber-500 focus:border-amber-500" step="0.01" min="0" />
+                            </div>
+                        ) : (
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">الخصم (%)</label>
+                                 <input type="number" value={discount} onChange={e => setDiscount(e.target.value)} placeholder="0" className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" step="0.1" min="0" />
+                            </div>
+                        )}
+                    </>
                 )}
                 
                  <div className="bg-gray-100 p-3 rounded-md text-center">
@@ -527,7 +561,7 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
       </div>
       
       <TransactionTable 
-        transactions={sales.map(s => ({...s, recordType: 'invoice'}))} 
+        transactions={filteredSales.map(s => ({...s, recordType: 'invoice'}))} 
         onDelete={(id, type) => deleteSale(id, 'invoice')}
         onEdit={(id) => handleStartEdit(id)}
         title="سجل الفواتير المحفوظة"
@@ -539,6 +573,20 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
                 onInvoiceClick(item);
             }
         }}
+        headerActions={
+            <div className="relative">
+                <input
+                    type="text"
+                    placeholder="ابحث بالاسم أو رقم الهاتف..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="w-full sm:w-72 p-2 ps-10 border border-gray-300 rounded-md focus:ring-green-500 focus:border-green-500"
+                />
+                <div className="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
+                    <SearchIcon className="text-gray-400"/>
+                </div>
+            </div>
+        }
       />
 
     </div>

@@ -12,6 +12,7 @@ interface TransactionTableProps {
   onRowClick?: (item: LogEntry) => void;
   title: string;
   colorClass: string;
+  headerActions?: React.ReactNode;
 }
 
 const formatCurrency = (amount: number) => {
@@ -37,11 +38,12 @@ const formatDate = (dateString: string) => {
     }).format(new Date(dateString));
 };
 
-export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions, onDelete, onEdit, title, colorClass, onRowClick }) => {
+export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions, onDelete, onEdit, title, colorClass, onRowClick, headerActions }) => {
   return (
     <div className="bg-white shadow-lg rounded-xl overflow-hidden">
-      <div className={`p-4 border-b ${colorClass} bg-opacity-10`}>
+      <div className={`p-4 border-b ${colorClass} bg-opacity-10 flex flex-wrap justify-between items-center gap-4`}>
         <h3 className={`text-lg font-bold ${colorClass.replace('bg','text').replace('-100', '-700')}`}>{title}</h3>
+        {headerActions && <div className="flex-grow sm:flex-grow-0">{headerActions}</div>}
       </div>
       <div className="overflow-x-auto">
         {transactions.length > 0 ? (

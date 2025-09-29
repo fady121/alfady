@@ -3,7 +3,7 @@ import React, { useState, useMemo } from 'react';
 import type { Transaction, Invoice, SalesSummary, SalesSummaryItem, PurchasesSummary, LogEntry, RecordType } from '../types';
 import { StatCard } from '../components/StatCard';
 import { TransactionTable } from '../components/TransactionTable';
-import { ChartPieIcon, ShoppingBagIcon, CashIcon, TrendingUpIcon, DocumentReportIcon, ScaleIcon, SparklesIcon } from '../components/icons/Icons';
+import { ChartPieIcon, ShoppingBagIcon, CashIcon, TrendingUpIcon, DocumentReportIcon, ScaleIcon, SparklesIcon, SearchIcon } from '../components/icons/Icons';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer, LineChart, Line } from 'recharts';
 
 type TimeRange = 'today' | 'week' | 'month' | 'year' | 'custom' | 'all';
@@ -71,6 +71,7 @@ export const HomePage: React.FC<HomePageProps> = ({
   const [activeTraderSummaryTab, setActiveTraderSummaryTab] = useState<TraderSummaryTab>('gold');
   const [insights, setInsights] = useState<string>('');
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
 
 
   const netProfit = totalSales - totalPurchases;
@@ -177,48 +178,72 @@ export const HomePage: React.FC<HomePageProps> = ({
     }, [allTransactions]);
 
   const filteredTransactions = useMemo(() => {
-    if (timeRange === 'all') return allTransactions;
-    const now = new Date();
+    let results = allTransactions;
 
-    return allTransactions.filter(t => {
+    // Time filtering
+    if (timeRange !== 'all') {
+      const now = new Date();
+      results = results.filter(t => {
         const transactionDate = new Date(t.date);
         switch (timeRange) {
-            case 'today': {
-                const startOfToday = new Date(now);
-                startOfToday.setHours(0, 0, 0, 0);
-                const endOfToday = new Date(now);
-                endOfToday.setHours(23, 59, 59, 999);
-                return transactionDate >= startOfToday && transactionDate <= endOfToday;
-            }
-            case 'week': {
-                const oneWeekAgo = new Date();
-                oneWeekAgo.setDate(now.getDate() - 7);
-                oneWeekAgo.setHours(0, 0, 0, 0);
-                return transactionDate >= oneWeekAgo;
-            }
-            case 'month': {
-                const oneMonthAgo = new Date();
-                oneMonthAgo.setMonth(now.getMonth() - 1);
-                oneMonthAgo.setHours(0, 0, 0, 0);
-                return transactionDate >= oneMonthAgo;
-            }
-            case 'year': {
-                const oneYearAgo = new Date();
-                oneYearAgo.setFullYear(now.getFullYear() - 1);
-                oneYearAgo.setHours(0, 0, 0, 0);
-                return transactionDate >= oneYearAgo;
-            }
-            case 'custom': {
-                if (!customStartDate || !customEndDate) return false;
-                const start = new Date(`${customStartDate}T00:00:00`);
-                const end = new Date(`${customEndDate}T23:59:59`);
-                return transactionDate >= start && transactionDate <= end;
-            }
-            default:
-                return false;
+          case 'today': {
+            const startOfToday = new Date(now);
+            startOfToday.setHours(0, 0, 0, 0);
+            const endOfToday = new Date(now);
+            endOfToday.setHours(23, 59, 59, 999);
+            return transactionDate >= startOfToday && transactionDate <= endOfToday;
+          }
+          case 'week': {
+            const oneWeekAgo = new Date();
+            oneWeekAgo.setDate(now.getDate() - 7);
+            oneWeekAgo.setHours(0, 0, 0, 0);
+            return transactionDate >= oneWeekAgo;
+          }
+          case 'month': {
+            const oneMonthAgo = new Date();
+            oneMonthAgo.setMonth(now.getMonth() - 1);
+            oneMonthAgo.setHours(0, 0, 0, 0);
+            return transactionDate >= oneMonthAgo;
+          }
+          case 'year': {
+            const oneYearAgo = new Date();
+            oneYearAgo.setFullYear(now.getFullYear() - 1);
+            oneYearAgo.setHours(0, 0, 0, 0);
+            return transactionDate >= oneYearAgo;
+          }
+          case 'custom': {
+            if (!customStartDate || !customEndDate) return false;
+            const start = new Date(`${customStartDate}T00:00:00`);
+            const end = new Date(`${customEndDate}T23:59:59`);
+            return transactionDate >= start && transactionDate <= end;
+          }
+          default:
+            return false;
         }
-    });
-  }, [allTransactions, timeRange, customStartDate, customEndDate]);
+      });
+    }
+
+    // Search filtering
+    if (searchQuery.trim()) {
+      const lowerCaseQuery = searchQuery.toLowerCase().trim();
+      results = results.filter(t => {
+        if (t.recordType === 'invoice') {
+          return (
+            t.customer.name.toLowerCase().includes(lowerCaseQuery) ||
+            t.customer.phone.includes(lowerCaseQuery)
+          );
+        }
+        if (t.recordType === 'traderTransaction') {
+          return t.traderName.toLowerCase().includes(lowerCaseQuery);
+        }
+        // 'general'
+        return t.description.toLowerCase().includes(lowerCaseQuery);
+      });
+    }
+    
+    return results;
+  }, [allTransactions, timeRange, customStartDate, customEndDate, searchQuery]);
+
 
   const transactionTableTitle = useMemo(() => {
     switch (timeRange) {
@@ -644,6 +669,20 @@ ${JSON.stringify(dataForAI)}
                 onInvoiceClick(item);
             }
         }}
+        headerActions={
+            <div className="relative">
+                <input
+                    type="text"
+                    placeholder="ابحث بالاسم، هاتف، أو وصف..."
+                    value={searchQuery}
+                    onChange={e => setSearchQuery(e.target.value)}
+                    className="w-full sm:w-72 p-2 ps-10 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
+                />
+                <div className="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
+                    <SearchIcon className="text-gray-400"/>
+                </div>
+            </div>
+        }
       />
     </div>
   );
