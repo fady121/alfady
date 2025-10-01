@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import type { Trader, TraderCategory, TraderTransaction } from '../types';
-import { PlusIcon, TrashIcon, PencilIcon, SearchIcon } from '../components/icons/Icons';
+import { PlusIcon, TrashIcon, PencilIcon, SearchIcon, WhatsAppIcon } from '../components/icons/Icons';
 
 interface PurchasesPageProps {
   traders: Trader[];
@@ -35,6 +35,66 @@ const formatCurrency = (amount: number) => {
         maximumFractionDigits: 0,
     }).format(amount);
 };
+
+const sendTraderTransactionWhatsApp = (
+    trader: Trader,
+    transaction: Omit<TraderTransaction, 'id' | 'traderId'>
+) => {
+    if (!trader.phone || trader.phone.trim().length !== 11) {
+        return;
+    }
+
+    const isGold = trader.category === 'GOLD';
+    let detailsText = '';
+    
+    if (isGold) {
+        const hasWork = transaction.workWeight > 0;
+        const hasScrap = transaction.scrapWeight > 0;
+        const hasFee = transaction.workmanshipFee > 0;
+        const hasPayment = transaction.cashPayment > 0;
+        
+        detailsText = [
+            hasWork && `- شغل مستلم (له): ${formatWeight(transaction.workWeight)}`,
+            hasScrap && `- كسر مسلم (عليه): ${formatWeight(transaction.scrapWeight)}`,
+            hasFee && `- أجرة مستحقة (له): ${formatCurrency(transaction.workmanshipFee)}`,
+            hasPayment && `- دفعة نقدية (عليه): ${formatCurrency(transaction.cashPayment)}`,
+        ].filter(Boolean).join('\n');
+    } else { // Silver
+        const workValue = transaction.workWeight * (transaction.silverPricePerGram || 0);
+        const totalRequired = workValue + transaction.workmanshipFee;
+        const balance = totalRequired - transaction.cashPayment;
+        
+        const hasWork = transaction.workWeight > 0;
+        const hasFee = transaction.workmanshipFee > 0;
+        const hasPayment = transaction.cashPayment > 0;
+        
+        detailsText = [
+            hasWork && `- شغل مستلم: ${formatWeight(transaction.workWeight)} (بسعر: ${formatCurrency(transaction.silverPricePerGram || 0)}/جم)`,
+            hasFee && `- أجرة مستحقة: ${formatCurrency(transaction.workmanshipFee)}`,
+            `--------------------`,
+            `*إجمالي المطلوب*: ${formatCurrency(totalRequired)}`,
+            hasPayment && `- دفعة نقدية: ${formatCurrency(transaction.cashPayment)}`,
+            `*الرصيد المتبقي (لهذه المعاملة)*: ${formatCurrency(Math.abs(balance))} ${balance > 0.01 ? 'علينا' : balance < -0.01 ? 'لكم' : ''}`,
+        ].filter(Boolean).join('\n');
+    }
+
+    const message = `
+*معاملة جديدة من الفادي للمجوهرات*
+--------------------
+*التاجر*: ${trader.name}
+*التاريخ*: ${formatDate(transaction.date)}
+*الوصف*: ${transaction.description || 'لا يوجد'}
+--------------------
+*تفاصيل المعاملة:*
+${detailsText}
+--------------------
+شكراً لتعاونكم!
+`.trim().replace(/\n\s*\n/g, '\n');
+
+    const whatsappUrl = `https://wa.me/2${trader.phone.trim()}?text=${encodeURIComponent(message)}`;
+    window.open(whatsappUrl, '_blank');
+};
+
 
 const TraderListItem: React.FC<{
     trader: Trader;
@@ -206,7 +266,7 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({
             scrapWeight: parseFloat(scrapWeight) || 0,
             workmanshipFee: parseFloat(workmanshipFee) || 0,
             cashPayment: parseFloat(cashPayment) || 0,
-            silverPricePerGram: selectedTrader.category === 'SILVER' ? (parseFloat(silverPrice) || 0) : undefined,
+            silverPricePerGram: selectedTrader.category === 'SILVER' ? (parseFloat(silverPrice) || undefined) : undefined,
         };
 
         if (editingTransactionId) {
@@ -218,6 +278,10 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({
             });
         }
         
+        if (selectedTrader.phone && selectedTrader.phone.trim().length === 11) {
+            sendTraderTransactionWhatsApp(selectedTrader, transactionData);
+        }
+
         clearTransactionForm();
     };
     
@@ -310,6 +374,8 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({
     const renderTransactionForm = () => {
         if (!selectedTrader) return null;
         const isGoldTrader = selectedTrader.category === 'GOLD';
+        const isPhoneValid = selectedTrader?.phone?.trim().length === 11;
+
         const theme = {
             headerBg: isGoldTrader ? 'bg-amber-50' : 'bg-slate-50',
             headerBorder: isGoldTrader ? 'border-amber-200' : 'border-slate-200',
@@ -398,9 +464,9 @@ export const PurchasesPage: React.FC<PurchasesPageProps> = ({
                     )}
 
                     <div className="flex items-center gap-4 pt-4">
-                        <button type="submit" className={`w-full flex justify-center items-center text-white px-4 py-2 rounded-lg shadow hover:opacity-90 transition-all ${theme.buttonBg}`}>
-                            <PlusIcon />
-                            <span className="ms-2 font-semibold">{editingTransactionId ? 'تحديث المعاملة' : 'إضافة المعاملة'}</span>
+                        <button type="submit" className={`w-full flex justify-center items-center text-white px-4 py-2 rounded-lg shadow transition-colors ${isPhoneValid ? 'bg-teal-600 hover:bg-teal-700' : theme.buttonBg}`}>
+                            {isPhoneValid && <WhatsAppIcon size={5} className="me-2" />}
+                            <span className="ms-2 font-semibold">{editingTransactionId ? 'تحديث المعاملة' : (isPhoneValid ? 'إضافة وإرسال' : 'إضافة المعاملة')}</span>
                         </button>
                         {editingTransactionId && (
                             <button type="button" onClick={clearTransactionForm} className="w-full flex justify-center items-center bg-gray-500 text-white px-4 py-2 rounded-lg shadow hover:bg-gray-600 transition-colors">

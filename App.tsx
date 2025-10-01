@@ -1,3 +1,5 @@
+
+
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Header } from './components/Header';
 import { HomePage } from './pages/HomePage';
@@ -6,8 +8,9 @@ import { PurchasesPage } from './pages/PurchasesPage';
 import { TreasuryPage } from './pages/TreasuryPage';
 import { LoginPage } from './pages/LoginPage';
 import { useLocalStorage } from './hooks/useLocalStorage';
-import type { Page, Transaction, Invoice, SalesSummary, Trader, TraderTransaction, PurchasesSummary, LogEntry, RecordType, TraderTransactionWithDetails, TraderCategory, InvoiceItem, Karat } from './types';
-import { TransactionType } from './types';
+// FIX: Import PaymentMethod as a value for enum access, and remove it from type-only import.
+import type { Page, Transaction, Invoice, SalesSummary, Trader, TraderTransaction, PurchasesSummary, LogEntry, RecordType, TraderTransactionWithDetails, TraderCategory, InvoiceItem, Karat, Payment } from './types';
+import { TransactionType, PaymentMethod } from './types';
 
 // Declare external libraries loaded via CDN
 declare var XLSX: any;
@@ -37,9 +40,14 @@ function App() {
   // This resolves an issue where the compiler couldn't infer all properties of an Invoice.
   const addRecord = (record: Omit<Invoice, 'id'> | Omit<Transaction, 'id' | 'date'>) => {
     if ('items' in record) { // It's an Invoice
+        // FIX: Explicitly typed the 'sum' accumulator to resolve potential type inference issues.
+        const amountPaid = record.payments.reduce((sum: number, p) => sum + p.amount, 0);
+        const remainingBalance = record.netTotal - amountPaid;
         const newSale: Invoice = {
             ...record,
             id: crypto.randomUUID(),
+            amountPaid,
+            remainingBalance,
         };
         setSales(prev => [newSale, ...prev]);
     } else { // It's a simple Transaction
@@ -93,9 +101,13 @@ function App() {
 
 
   const updateInvoice = (id: string, updatedInvoiceData: Omit<Invoice, 'id'>) => {
+      // FIX: Explicitly typed the 'sum' accumulator to resolve potential type inference issues.
+      const amountPaid = updatedInvoiceData.payments.reduce((sum: number, p) => sum + p.amount, 0);
+      const remainingBalance = updatedInvoiceData.netTotal - amountPaid;
+
       setSales(prevSales =>
           prevSales.map(inv =>
-              inv.id === id ? { ...updatedInvoiceData, id: id } : inv
+              inv.id === id ? { ...updatedInvoiceData, id: id, amountPaid, remainingBalance } : inv
           )
       );
   };
@@ -125,30 +137,35 @@ function App() {
       setRecordToEditId(null);
   };
 
-  const applyPayment = (invoiceId: string, paymentAmount: number, type: TransactionType.DEBT_PAYMENT | TransactionType.CREDIT_PAYMENT) => {
+  const applyPayment = (invoiceId: string, payment: Omit<Payment, 'id' | 'date'>, type: 'DEBT' | 'CREDIT') => {
     const updatedSales = sales.map(inv => {
       if (inv.id === invoiceId) {
-        let newAmountPaid: number;
-        if (type === TransactionType.DEBT_PAYMENT) {
-          // Customer pays us, amountPaid increases.
-          newAmountPaid = inv.amountPaid + paymentAmount;
-        } else { // type === TransactionType.CREDIT_PAYMENT
-          // We pay the customer, reducing our liability. This is reflected by decreasing amountPaid.
-          newAmountPaid = inv.amountPaid - paymentAmount;
-        }
+        // For credit payments, we are paying the customer, so the amount is an outflow (negative)
+        const paymentAmount = type === 'DEBT' ? payment.amount : -payment.amount;
+
+        const newPayment: Payment = {
+          ...payment,
+          amount: paymentAmount,
+          id: crypto.randomUUID(),
+          date: new Date().toISOString(),
+        };
+
+        const updatedPayments = [...(inv.payments || []), newPayment];
+        // FIX: Explicitly typed the 'sum' accumulator to resolve potential type inference issues.
+        const newAmountPaid = updatedPayments.reduce((sum: number, p) => sum + p.amount, 0);
 
         return {
           ...inv,
+          payments: updatedPayments,
           amountPaid: newAmountPaid,
-          remainingBalance: inv.netTotal - newAmountPaid
+          remainingBalance: inv.netTotal - newAmountPaid,
         };
       }
       return inv;
     });
     setSales(updatedSales);
-    // FIX: Removed the creation of a separate transaction to prevent double-counting.
-    // The change in invoice.amountPaid is now the single source of truth for treasury calculations.
   };
+
 
   const navigateToTreasuryForInvoice = (invoice: Invoice) => {
     if (invoice.remainingBalance > 0.01) {
@@ -187,149 +204,71 @@ function App() {
     return combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
   }, [sales, transactions, traders, traderTransactions]);
   
-  // Net cash flow from all customer invoices (sales, buy-backs, payments)
-  const totalCashFromSales = useMemo(() => sales.reduce((sum, t) => sum + t.amountPaid, 0), [sales]);
-  const totalExpenses = useMemo(() => transactions.filter(t => t.type === TransactionType.EXPENSE).reduce((sum, t) => sum + t.amount, 0), [transactions]);
-  const totalTraderPayments = useMemo(() => traderTransactions.reduce((sum, t) => sum + t.cashPayment, 0), [traderTransactions]);
-  const totalDeposits = useMemo(() => transactions.filter(t => t.type === TransactionType.DEPOSIT).reduce((sum, t) => sum + t.amount, 0), [transactions]);
-  
   // New definitions for HomePage stat cards
   const totalSalesForDisplay = useMemo(() => {
     return sales
       .flatMap(inv => inv.items)
       .filter(item => item.saleType === 'SELL')
-      .reduce((sum, item) => sum + item.total, 0);
+      // FIX: Added an explicit type for the 'sum' accumulator to help TypeScript's inference.
+      .reduce((sum: number, item) => sum + item.total, 0);
   }, [sales]);
+  
+  // FIX: Added an explicit type for the 'sum' accumulator to help TypeScript's inference,
+  // resolving an issue where the return type of useMemo was inferred as 'unknown'.
+  const totalTraderPayments = useMemo(() => traderTransactions.reduce((sum: number, t) => sum + t.cashPayment, 0), [traderTransactions]);
+  // FIX: Added an explicit type for the 'sum' accumulator to help TypeScript's inference,
+  // resolving an issue where the return type of useMemo was inferred as 'unknown'.
+  const totalExpenses = useMemo(() => transactions.filter(t => t.type === TransactionType.EXPENSE).reduce((sum: number, t) => sum + t.amount, 0), [transactions]);
 
   const totalPurchasesForDisplay = useMemo(() => {
-    // "Total Purchases" is the sum of actual cash amounts that left the store.
-    // 1. Cash paid to customers (for buy-backs or settling credits)
-    const cashPaidToCustomers = sales.reduce((sum, inv) => {
-      // amountPaid is negative when cash leaves the store for a customer invoice
-      return inv.amountPaid < 0 ? sum + Math.abs(inv.amountPaid) : sum;
-    }, 0);
-    
-    // 2. Cash paid to traders, and expenses
+    // Total cash out from negative-balance invoices (credits we paid)
+    const cashPaidToCustomers = sales.flatMap(inv => inv.payments || [])
+                                      .filter(p => p.amount < 0)
+                                      // FIX: Added an explicit type for the 'sum' accumulator to resolve a type inference issue.
+                                      .reduce((sum: number, p) => sum + Math.abs(p.amount), 0);
+
     return cashPaidToCustomers + totalTraderPayments + totalExpenses;
   }, [sales, totalTraderPayments, totalExpenses]);
 
-  const treasuryBalance = useMemo(() => {
-    // totalCashFromSales is the net of cash in/out from invoices.
-    const totalInflow = totalCashFromSales + totalDeposits;
-    // totalOutflow is cash out for non-customer-invoice reasons.
-    const totalOutflow = totalExpenses + totalTraderPayments;
-    return totalInflow - totalOutflow;
-  }, [totalCashFromSales, totalDeposits, totalExpenses, totalTraderPayments]);
-
-  const salesSummary = useMemo<SalesSummary>(() => {
-    const summary: SalesSummary = {
-        store: {
-            gold24: { weight: 0, cash: 0 },
-            gold21: { weight: 0, cash: 0 },
-            gold18: { weight: 0, cash: 0 },
-        },
-        online: {
-            gold24: { weight: 0, cash: 0 },
-            gold21: { weight: 0, cash: 0 },
-            gold18: { weight: 0, cash: 0 },
-        },
-        buyBack: {
-            gold24: { weight: 0, cash: 0 },
-            gold21: { weight: 0, cash: 0 },
-            gold18: { weight: 0, cash: 0 },
-            silver: { weight: 0, cash: 0 },
-        },
-        silver: { weight: 0, cash: 0 },
-    };
-
-    sales.forEach(invoice => {
-        invoice.items.forEach(item => {
-            if (item.category === 'SILVER') {
-                if (item.saleType === 'SELL') {
-                    summary.silver.weight += item.weight;
-                    summary.silver.cash += item.total;
-                } else if (item.saleType === 'BUY_BACK') {
-                    summary.buyBack.silver.weight += item.weight;
-                    summary.buyBack.silver.cash += item.total;
-                }
-            } else if (item.category === 'GOLD') {
-                if (item.saleType === 'SELL') {
-                    const channel = invoice.channel === 'ONLINE' ? summary.online : summary.store;
-                    switch (item.karat) {
-                        case 24:
-                            channel.gold24.weight += item.weight;
-                            channel.gold24.cash += item.total;
-                            break;
-                        case 21:
-                            channel.gold21.weight += item.weight;
-                            channel.gold21.cash += item.total;
-                            break;
-                        case 18:
-                            channel.gold18.weight += item.weight;
-                            channel.gold18.cash += item.total;
-                            break;
-                    }
-                } else if (item.saleType === 'BUY_BACK') {
-                    const channel = summary.buyBack;
-                    switch (item.karat) {
-                        case 24:
-                            channel.gold24.weight += item.weight;
-                            channel.gold24.cash += item.total;
-                            break;
-                        case 21:
-                            channel.gold21.weight += item.weight;
-                            channel.gold21.cash += item.total;
-                            break;
-                        case 18:
-                            channel.gold18.weight += item.weight;
-                            channel.gold18.cash += item.total;
-                            break;
-                    }
-                }
-            }
-        });
-    });
-
-    return summary;
-  }, [sales]);
-
-    const purchasesSummary = useMemo<PurchasesSummary>(() => {
-        const summary: PurchasesSummary = {
-            gold: {
-                totalWorkWeight: 0,
-                totalWorkmanshipFee: 0,
-                totalScrapWeight: 0,
-                netGoldBalance: 0,
-            },
-            silver: {
-                totalWorkWeight: 0,
-                totalRequiredCash: 0,
-                totalCashPaid: 0,
-                netCashBalance: 0,
-            },
+    // Wallet balance calculations
+    const walletBalances = useMemo(() => {
+        const balances: Record<PaymentMethod, number> = {
+            CASH: 0,
+            E_WALLET: 0,
+            INSTAPAY: 0,
+            FAWRY: 0,
         };
 
-        const goldTraders = traders.filter(t => t.category === 'GOLD').map(t => t.id);
-        const silverTraders = traders.filter(t => t.category === 'SILVER').map(t => t.id);
-
-        traderTransactions.forEach(trans => {
-            if (goldTraders.includes(trans.traderId)) {
-                summary.gold.totalWorkWeight += trans.workWeight;
-                summary.gold.totalWorkmanshipFee += trans.workmanshipFee;
-                summary.gold.totalScrapWeight += trans.scrapWeight;
-            } else if (silverTraders.includes(trans.traderId)) {
-                const workValue = trans.workWeight * (trans.silverPricePerGram || 0);
-                summary.silver.totalWorkWeight += trans.workWeight;
-                summary.silver.totalRequiredCash += workValue + trans.workmanshipFee;
-                summary.silver.totalCashPaid += trans.cashPayment;
+        // Inflows from sales
+        sales.flatMap(inv => inv.payments || []).forEach(p => {
+            if (p.method in balances) {
+                balances[p.method] += p.amount;
             }
         });
 
-        summary.gold.netGoldBalance = summary.gold.totalWorkWeight - summary.gold.totalScrapWeight;
-        summary.silver.netCashBalance = summary.silver.totalRequiredCash - summary.silver.totalCashPaid;
+        // Inflows/Outflows from general transactions
+        transactions.forEach(t => {
+            const method = t.paymentMethod || 'CASH';
+            if (method in balances) {
+                if (t.type === TransactionType.DEPOSIT) {
+                    balances[method] += t.amount;
+                } else if (t.type === TransactionType.EXPENSE) {
+                    balances[method] -= t.amount;
+                }
+            }
+        });
+        
+        // Outflows for trader payments (assumed CASH)
+        balances.CASH -= totalTraderPayments;
+        
+        return balances;
+    }, [sales, transactions, totalTraderPayments]);
 
-        return summary;
-    }, [traders, traderTransactions]);
+    const treasuryBalance = useMemo(() => {
+        // FIX: Explicitly typed the 'sum' accumulator to resolve potential type inference issues.
+        // FIX: Explicitly typed the 'balance' parameter because `walletBalances` type was not being inferred correctly.
+        return Object.values(walletBalances).reduce((sum: number, balance: number) => sum + balance, 0);
+    }, [walletBalances]);
 
     const handleExportData = useCallback((isAutoBackup: boolean = false): boolean => {
       try {
@@ -346,6 +285,7 @@ function App() {
                   'صافي الفاتورة': invoice.netTotal,
                   'المدفوع': invoice.amountPaid,
                   'المتبقي': invoice.remainingBalance,
+                  'المدفوعات': JSON.stringify(invoice.payments || []), // Export payments array
                   'الشحن': invoice.channel === 'ONLINE' ? invoice.shipping : undefined,
                   'ID القطعة': item.id,
                   'نوع العملية': item.saleType,
@@ -511,6 +451,22 @@ function App() {
 
                           // Create invoice if it doesn't exist
                           if (!salesMap.has(invoiceId)) {
+                              let payments: Payment[] = [];
+                              if (row['المدفوعات']) {
+                                  try {
+                                      payments = JSON.parse(row['المدفوعات']);
+                                  } catch (e) { console.error("Could not parse payments for invoice", invoiceId); }
+                              } else if (row['المدفوع'] && Number(row['المدفوع']) !== 0) {
+                                  // Backward compatibility for old format
+                                  payments.push({
+                                      id: crypto.randomUUID(),
+                                      // FIX: Use the PaymentMethod enum instead of a string literal to match the expected type.
+                                      method: PaymentMethod.CASH,
+                                      amount: Number(row['المدفوع']),
+                                      date: row['تاريخ الفاتورة'] instanceof Date ? row['تاريخ الفاتورة'].toISOString() : new Date().toISOString()
+                                  });
+                              }
+                              
                               const newInvoice: Invoice = {
                                   id: invoiceId,
                                   type: TransactionType.SALE,
@@ -523,6 +479,7 @@ function App() {
                                   remainingBalance: Number(row['المتبقي'] || 0),
                                   shipping: Number(row['الشحن'] || 0),
                                   items: [],
+                                  payments,
                                   // Temporary fields, will be overwritten by the last item
                                   description: '', 
                                   amount: Number(row['صافي الفاتورة'] || 0),
@@ -616,8 +573,9 @@ function App() {
                   totalPurchases={totalPurchasesForDisplay} 
                   treasuryBalance={treasuryBalance} 
                   allTransactions={allTransactionsForLog}
-                  salesSummary={salesSummary}
-                  purchasesSummary={purchasesSummary}
+                  sales={sales}
+                  traders={traders}
+                  traderTransactions={traderTransactions}
                   onEditRecord={handleStartEdit}
                   onDeleteRecord={deleteRecord}
                   onInvoiceClick={navigateToTreasuryForInvoice}
@@ -642,6 +600,7 @@ function App() {
                   sales={sales} 
                   transactions={transactions} 
                   balance={treasuryBalance} 
+                  walletBalances={walletBalances}
                   applyPayment={applyPayment} 
                   addTransaction={addRecord}
                   initialView={treasuryInitialView}
@@ -652,8 +611,9 @@ function App() {
                   totalPurchases={totalPurchasesForDisplay} 
                   treasuryBalance={treasuryBalance} 
                   allTransactions={allTransactionsForLog}
-                  salesSummary={salesSummary}
-                  purchasesSummary={purchasesSummary}
+                  sales={sales}
+                  traders={traders}
+                  traderTransactions={traderTransactions}
                   onEditRecord={handleStartEdit}
                   onDeleteRecord={deleteRecord}
                   onInvoiceClick={navigateToTreasuryForInvoice}

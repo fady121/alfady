@@ -1,4 +1,3 @@
-
 import React from 'react';
 import type { Transaction, Invoice, LogEntry, RecordType, InvoiceItem } from '../types';
 import { TransactionType } from '../types';
@@ -112,18 +111,26 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                                   weights[key] += item.weight;
                               });
 
-                              const details = Object.entries(weights)
-                                  .map(([key, weight]) => `${key}: ${weight.toFixed(2)} جرام`)
-                                  .join(' | ');
-
                               return (
                                   <div>
                                       <div className="font-semibold text-gray-800">{formatWeight(totalWeight)}</div>
-                                      {Object.keys(weights).length > 1 ? (
-                                        <div className="text-xs text-gray-500 mt-1">{details}</div>
-                                      ) : (
-                                        <div className="text-xs text-gray-500 mt-1">{Object.keys(weights)[0]}</div>
-                                      )}
+                                      <div className="flex flex-wrap gap-1 mt-1">
+                                          {Object.entries(weights)
+                                              .map(([key, weight]) => {
+                                                  let colorClass = '';
+                                                  if (key.includes('ذهب 24')) colorClass = 'bg-yellow-400 text-black';
+                                                  else if (key.includes('ذهب 21')) colorClass = 'bg-amber-400 text-black';
+                                                  else if (key.includes('ذهب 18')) colorClass = 'bg-orange-400 text-black';
+                                                  else if (key.includes('فضة')) colorClass = 'bg-slate-300 text-black';
+                                                  
+                                                  return (
+                                                      <span key={key} className={`px-2 py-0.5 rounded-full text-xs font-semibold ${colorClass}`}>
+                                                          {`${key}: ${weight.toFixed(2)}g`}
+                                                      </span>
+                                                  );
+                                              })
+                                          }
+                                      </div>
                                   </div>
                               );
                           })()}
@@ -156,8 +163,11 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                         ? transaction.workmanshipFee 
                         : (transaction.workWeight * (transaction.silverPricePerGram || 0)) + transaction.workmanshipFee;
 
+                    const isGoldTrader = transaction.traderCategory === 'GOLD';
+                    const rowClass = `bg-white border-b hover:bg-gray-50 border-s-4 ${isGoldTrader ? 'border-amber-500' : 'border-slate-500'}`;
+
                     return (
-                        <tr key={transaction.id} className="bg-white border-b hover:bg-gray-50">
+                        <tr key={transaction.id} className={rowClass}>
                             <td className="px-6 py-4">
                                 <div className="font-semibold text-gray-900">{transaction.traderName}</div>
                                 <div className="text-xs text-gray-500 mt-1 flex items-center">
@@ -192,8 +202,8 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                 }
 
                 
-                // Fallback for simple Transactions (Expense, Deposit)
-                const transaction = t;
+                // Fallback for simple Transactions (Expense, Deposit, Payments)
+                const transaction = t as Transaction; // All remaining LogEntry types can be treated as Transaction
                 const isOutflow = [TransactionType.EXPENSE, TransactionType.CREDIT_PAYMENT].includes(transaction.type);
                 const isInflow = [TransactionType.DEPOSIT, TransactionType.DEBT_PAYMENT].includes(transaction.type);
                 
@@ -205,11 +215,13 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                       <td className={`px-6 py-4 font-semibold text-base ${isInflow ? 'text-green-600' : 'text-gray-500'}`}>{isInflow ? formatCurrency(transaction.amount) : '-'}</td>
                       <td className="px-6 py-4 text-gray-400">-</td>
                       <td className="px-6 py-4">{formatDate(transaction.date)}</td>
-                       {onDelete && (
+                       {(onDelete || onEdit) && (
                             <td className="px-6 py-4">
-                              <button onClick={() => onDelete(transaction.id, transaction.type)} className="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-100 transition-colors">
-                                <TrashIcon />
-                              </button>
+                              {onDelete && !transaction.id.startsWith('payment-') ? (
+                                <button onClick={() => onDelete(transaction.id, transaction.type)} className="text-red-500 hover:text-red-700 p-2 rounded-full hover:bg-red-100 transition-colors">
+                                  <TrashIcon />
+                                </button>
+                              ) : null}
                             </td>
                         )}
                     </tr>

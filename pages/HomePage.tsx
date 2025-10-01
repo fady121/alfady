@@ -1,6 +1,6 @@
-
 import React, { useState, useMemo } from 'react';
-import type { Transaction, Invoice, SalesSummary, SalesSummaryItem, PurchasesSummary, LogEntry, RecordType } from '../types';
+import type { Transaction, Invoice, SalesSummary, SalesSummaryItem, PurchasesSummary, LogEntry, RecordType, Trader, TraderTransaction } from '../types';
+import { TransactionType } from '../types';
 import { StatCard } from '../components/StatCard';
 import { TransactionTable } from '../components/TransactionTable';
 import { ChartPieIcon, ShoppingBagIcon, CashIcon, TrendingUpIcon, DocumentReportIcon, ScaleIcon, SparklesIcon, SearchIcon } from '../components/icons/Icons';
@@ -15,8 +15,9 @@ interface HomePageProps {
   totalPurchases: number;
   treasuryBalance: number;
   allTransactions: LogEntry[];
-  salesSummary: SalesSummary;
-  purchasesSummary: PurchasesSummary;
+  sales: Invoice[];
+  traders: Trader[];
+  traderTransactions: TraderTransaction[];
   onEditRecord: (id: string, type: RecordType) => void;
   onDeleteRecord: (id: string, type: RecordType | any) => void;
   onInvoiceClick: (invoice: Invoice) => void;
@@ -52,19 +53,64 @@ const PurchaseSummaryDetails: React.FC<{title: string, value: string, valueClass
     </div>
 );
 
+const getDateRange = (timeRange: TimeRange, customStartDate?: string, customEndDate?: string): { start: Date; end: Date } | null => {
+    const now = new Date();
+    let start: Date;
+    let end: Date;
+
+    switch (timeRange) {
+        case 'today':
+            start = new Date(now);
+            start.setHours(3, 0, 0, 0);
+            if (now.getHours() < 3) {
+                start.setDate(start.getDate() - 1);
+            }
+            end = new Date(start);
+            end.setDate(end.getDate() + 1);
+            return { start, end };
+        case 'week':
+            const dayOfWeek = now.getDay();
+            const diffToSat = (dayOfWeek + 1) % 7;
+            start = new Date(now);
+            start.setDate(now.getDate() - diffToSat);
+            start.setHours(3, 0, 0, 0);
+            end = new Date(start);
+            end.setDate(start.getDate() + 7);
+            return { start, end };
+        case 'month':
+            start = new Date(now.getFullYear(), now.getMonth(), 1, 3, 0, 0, 0);
+            end = new Date(now.getFullYear(), now.getMonth() + 1, 1, 3, 0, 0, 0);
+            return { start, end };
+        case 'year':
+            start = new Date(now.getFullYear(), 0, 1, 3, 0, 0, 0);
+            end = new Date(now.getFullYear() + 1, 0, 1, 3, 0, 0, 0);
+            return { start, end };
+        case 'custom':
+            if (!customStartDate || !customEndDate) return null;
+            start = new Date(`${customStartDate}T03:00:00`);
+            end = new Date(customEndDate);
+            end.setDate(end.getDate() + 1);
+            end.setHours(3, 0, 0, 0);
+            return { start, end };
+        default:
+            return null;
+    }
+};
+
 
 export const HomePage: React.FC<HomePageProps> = ({ 
     totalSales, 
     totalPurchases, 
     treasuryBalance, 
     allTransactions, 
-    salesSummary, 
-    purchasesSummary,
+    sales,
+    traders,
+    traderTransactions,
     onEditRecord,
     onDeleteRecord,
     onInvoiceClick 
 }) => {
-  const [timeRange, setTimeRange] = useState<TimeRange>('today');
+  const [timeRange, setTimeRange] = useState<TimeRange>('all');
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
   const [activeSummaryTab, setActiveSummaryTab] = useState<SummaryTab>('store');
@@ -72,7 +118,135 @@ export const HomePage: React.FC<HomePageProps> = ({
   const [insights, setInsights] = useState<string>('');
   const [isGeneratingInsights, setIsGeneratingInsights] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [summaryFilter, setSummaryFilter] = useState<SummaryTab | null>(null);
 
+  const timeFilteredSales = useMemo(() => {
+    const range = getDateRange(timeRange, customStartDate, customEndDate);
+    if (!range) return sales; // If 'all' or invalid custom range
+    return sales.filter(s => {
+      const transactionDate = new Date(s.date);
+      return transactionDate >= range.start && transactionDate < range.end;
+    });
+  }, [sales, timeRange, customStartDate, customEndDate]);
+
+  const timeFilteredTraderTransactions = useMemo(() => {
+    const range = getDateRange(timeRange, customStartDate, customEndDate);
+    if (!range) return traderTransactions; // If 'all' or invalid custom range
+    return traderTransactions.filter(t => {
+      const transactionDate = new Date(t.date);
+      return transactionDate >= range.start && transactionDate < range.end;
+    });
+  }, [traderTransactions, timeRange, customStartDate, customEndDate]);
+
+    const salesSummary = useMemo<SalesSummary>(() => {
+    const summary: SalesSummary = {
+        store: {
+            gold24: { weight: 0, cash: 0 },
+            gold21: { weight: 0, cash: 0 },
+            gold18: { weight: 0, cash: 0 },
+        },
+        online: {
+            gold24: { weight: 0, cash: 0 },
+            gold21: { weight: 0, cash: 0 },
+            gold18: { weight: 0, cash: 0 },
+        },
+        buyBack: {
+            gold24: { weight: 0, cash: 0 },
+            gold21: { weight: 0, cash: 0 },
+            gold18: { weight: 0, cash: 0 },
+            silver: { weight: 0, cash: 0 },
+        },
+        silver: { weight: 0, cash: 0 },
+    };
+
+    timeFilteredSales.forEach(invoice => {
+        invoice.items.forEach(item => {
+            if (item.category === 'SILVER') {
+                if (item.saleType === 'SELL') {
+                    summary.silver.weight += item.weight;
+                    summary.silver.cash += item.total;
+                } else if (item.saleType === 'BUY_BACK') {
+                    summary.buyBack.silver.weight += item.weight;
+                    summary.buyBack.silver.cash += item.total;
+                }
+            } else if (item.category === 'GOLD') {
+                if (item.saleType === 'SELL') {
+                    const channel = invoice.channel === 'ONLINE' ? summary.online : summary.store;
+                    switch (item.karat) {
+                        case 24:
+                            channel.gold24.weight += item.weight;
+                            channel.gold24.cash += item.total;
+                            break;
+                        case 21:
+                            channel.gold21.weight += item.weight;
+                            channel.gold21.cash += item.total;
+                            break;
+                        case 18:
+                            channel.gold18.weight += item.weight;
+                            channel.gold18.cash += item.total;
+                            break;
+                    }
+                } else if (item.saleType === 'BUY_BACK') {
+                    const channel = summary.buyBack;
+                    switch (item.karat) {
+                        case 24:
+                            channel.gold24.weight += item.weight;
+                            channel.gold24.cash += item.total;
+                            break;
+                        case 21:
+                            channel.gold21.weight += item.weight;
+                            channel.gold21.cash += item.total;
+                            break;
+                        case 18:
+                            channel.gold18.weight += item.weight;
+                            channel.gold18.cash += item.total;
+                            break;
+                    }
+                }
+            }
+        });
+    });
+
+    return summary;
+  }, [timeFilteredSales]);
+
+    const purchasesSummary = useMemo<PurchasesSummary>(() => {
+        const summary: PurchasesSummary = {
+            gold: {
+                totalWorkWeight: 0,
+                totalWorkmanshipFee: 0,
+                totalScrapWeight: 0,
+                netGoldBalance: 0,
+            },
+            silver: {
+                totalWorkWeight: 0,
+                totalRequiredCash: 0,
+                totalCashPaid: 0,
+                netCashBalance: 0,
+            },
+        };
+
+        const goldTraders = traders.filter(t => t.category === 'GOLD').map(t => t.id);
+        const silverTraders = traders.filter(t => t.category === 'SILVER').map(t => t.id);
+
+        timeFilteredTraderTransactions.forEach(trans => {
+            if (goldTraders.includes(trans.traderId)) {
+                summary.gold.totalWorkWeight += trans.workWeight;
+                summary.gold.totalWorkmanshipFee += trans.workmanshipFee;
+                summary.gold.totalScrapWeight += trans.scrapWeight;
+            } else if (silverTraders.includes(trans.traderId)) {
+                const workValue = trans.workWeight * (trans.silverPricePerGram || 0);
+                summary.silver.totalWorkWeight += trans.workWeight;
+                summary.silver.totalRequiredCash += workValue + trans.workmanshipFee;
+                summary.silver.totalCashPaid += trans.cashPayment;
+            }
+        });
+
+        summary.gold.netGoldBalance = summary.gold.totalWorkWeight - summary.gold.totalScrapWeight;
+        summary.silver.netCashBalance = summary.silver.totalRequiredCash - summary.silver.totalCashPaid;
+
+        return summary;
+    }, [traders, timeFilteredTraderTransactions]);
 
   const netProfit = totalSales - totalPurchases;
 
@@ -95,9 +269,60 @@ export const HomePage: React.FC<HomePageProps> = ({
   const totalOnlineCash = salesSummary.online.gold24.cash + salesSummary.online.gold21.cash + salesSummary.online.gold18.cash;
   const totalBuyBackCash = salesSummary.buyBack.gold24.cash + salesSummary.buyBack.gold21.cash + salesSummary.buyBack.gold18.cash;
 
+  // These should be all time balances, so they use the original unfiltered data
+  const totalGoldInStore = useMemo(() => {
+    const allTimePurchasesSummary = (() => {
+        const summary = { netGoldBalance: 0 };
+        const goldTraders = traders.filter(t => t.category === 'GOLD').map(t => t.id);
+        traderTransactions.forEach(trans => {
+            if (goldTraders.includes(trans.traderId)) {
+                summary.netGoldBalance += trans.workWeight - trans.scrapWeight;
+            }
+        });
+        return summary;
+    })();
 
-  const totalGoldInStore = purchasesSummary.gold.netGoldBalance + totalBuyBackGold21Equivalent - (totalStoreGold21Equivalent + totalOnlineGold21Equivalent);
-  const totalSilverInStore = purchasesSummary.silver.totalWorkWeight + salesSummary.buyBack.silver.weight - salesSummary.silver.weight;
+    const allTimeSalesSummary = (() => {
+        const summary = {
+            storeGold21Eq: 0,
+            onlineGold21Eq: 0,
+            buyBackGold21Eq: 0
+        };
+        sales.forEach(invoice => {
+            invoice.items.forEach(item => {
+                if (item.category === 'GOLD') {
+                    const weight21Eq = item.weight * (item.karat ?? 21) / 21;
+                    if (item.saleType === 'SELL') {
+                        if (invoice.channel === 'STORE') summary.storeGold21Eq += weight21Eq;
+                        else summary.onlineGold21Eq += weight21Eq;
+                    } else if (item.saleType === 'BUY_BACK') {
+                        summary.buyBackGold21Eq += weight21Eq;
+                    }
+                }
+            });
+        });
+        return summary;
+    })();
+
+    return allTimePurchasesSummary.netGoldBalance + allTimeSalesSummary.buyBackGold21Eq - (allTimeSalesSummary.storeGold21Eq + allTimeSalesSummary.onlineGold21Eq);
+  }, [sales, traders, traderTransactions]);
+
+  const totalSilverInStore = useMemo(() => {
+    const totalPurchasedFromTraders = traderTransactions
+        .filter(tt => traders.find(t => t.id === tt.traderId)?.category === 'SILVER')
+        .reduce((sum, tt) => sum + tt.workWeight, 0);
+
+    const silverMovementWithCustomers = sales.flatMap(inv => inv.items)
+        .filter(item => item.category === 'SILVER')
+        .reduce((acc, item) => {
+            if (item.saleType === 'BUY_BACK') acc.bought += item.weight;
+            else if (item.saleType === 'SELL') acc.sold += item.weight;
+            return acc;
+        }, { bought: 0, sold: 0 });
+
+    return totalPurchasedFromTraders + silverMovementWithCustomers.bought - silverMovementWithCustomers.sold;
+  }, [sales, traders, traderTransactions]);
+
 
   // Sales Chart data
   const storeChartData = useMemo(() => [
@@ -177,46 +402,36 @@ export const HomePage: React.FC<HomePageProps> = ({
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     }, [allTransactions]);
 
-  const filteredTransactions = useMemo(() => {
+  const baseFilteredTransactions = useMemo(() => {
     let results = allTransactions;
 
     // Time filtering
     if (timeRange !== 'all') {
-      const now = new Date();
+      const range = getDateRange(timeRange, customStartDate, customEndDate);
+      if (range) {
+          results = results.filter(t => {
+            const transactionDate = new Date(t.date);
+            return transactionDate >= range.start && transactionDate < range.end;
+          });
+      }
+    }
+
+    // Summary Tab Filtering
+    if (summaryFilter) {
       results = results.filter(t => {
-        const transactionDate = new Date(t.date);
-        switch (timeRange) {
-          case 'today': {
-            const startOfToday = new Date(now);
-            startOfToday.setHours(0, 0, 0, 0);
-            const endOfToday = new Date(now);
-            endOfToday.setHours(23, 59, 59, 999);
-            return transactionDate >= startOfToday && transactionDate <= endOfToday;
-          }
-          case 'week': {
-            const oneWeekAgo = new Date();
-            oneWeekAgo.setDate(now.getDate() - 7);
-            oneWeekAgo.setHours(0, 0, 0, 0);
-            return transactionDate >= oneWeekAgo;
-          }
-          case 'month': {
-            const oneMonthAgo = new Date();
-            oneMonthAgo.setMonth(now.getMonth() - 1);
-            oneMonthAgo.setHours(0, 0, 0, 0);
-            return transactionDate >= oneMonthAgo;
-          }
-          case 'year': {
-            const oneYearAgo = new Date();
-            oneYearAgo.setFullYear(now.getFullYear() - 1);
-            oneYearAgo.setHours(0, 0, 0, 0);
-            return transactionDate >= oneYearAgo;
-          }
-          case 'custom': {
-            if (!customStartDate || !customEndDate) return false;
-            const start = new Date(`${customStartDate}T00:00:00`);
-            const end = new Date(`${customEndDate}T23:59:59`);
-            return transactionDate >= start && transactionDate <= end;
-          }
+        if (t.recordType !== 'invoice') {
+          return false;
+        }
+        // Now t is guaranteed to be an Invoice
+        switch (summaryFilter) {
+          case 'store':
+            return t.channel === 'STORE';
+          case 'online':
+            return t.channel === 'ONLINE';
+          case 'buyBack':
+            return t.items.some(item => item.saleType === 'BUY_BACK' && item.category === 'GOLD');
+          case 'silver':
+            return t.items.some(item => item.category === 'SILVER');
           default:
             return false;
         }
@@ -242,20 +457,81 @@ export const HomePage: React.FC<HomePageProps> = ({
     }
     
     return results;
-  }, [allTransactions, timeRange, customStartDate, customEndDate, searchQuery]);
+  }, [allTransactions, timeRange, customStartDate, customEndDate, searchQuery, summaryFilter]);
 
+  const transactionsForDisplay = useMemo(() => {
+    if (timeRange === 'all') {
+        return baseFilteredTransactions;
+    }
+
+    const range = getDateRange(timeRange, customStartDate, customEndDate);
+
+    // If the date range is invalid (e.g., custom range not set), just return the base transactions
+    if (!range) {
+        return baseFilteredTransactions;
+    }
+
+    const { start: startDate, end: endDate } = range;
+
+    const paymentsFromOlderInvoices: LogEntry[] = [];
+    
+    // Iterate over ALL sales to find payments made within the time range on older invoices.
+    sales.forEach(invoice => {
+        const invoiceDate = new Date(invoice.date);
+        
+        // Only look at invoices created BEFORE the current time range starts
+        if (invoiceDate < startDate) {
+             (invoice.payments || []).forEach(payment => {
+                const paymentDate = new Date(payment.date);
+                // Check if the payment was made WITHIN the current time range
+                if (paymentDate >= startDate && paymentDate < endDate) {
+                    const isDebtPayment = payment.amount > 0; // Customer paying us
+                    
+                    const virtualTransaction: LogEntry = {
+                        id: `payment-${payment.id}`,
+                        type: isDebtPayment ? TransactionType.DEBT_PAYMENT : TransactionType.CREDIT_PAYMENT,
+                        date: payment.date,
+                        description: `${isDebtPayment ? 'تحصيل دفعة من' : 'سداد دفعة إلى'} ${invoice.customer.name}`,
+                        amount: Math.abs(payment.amount),
+                        paymentMethod: payment.method,
+                        recordType: 'general',
+                    };
+                    paymentsFromOlderInvoices.push(virtualTransaction);
+                }
+            });
+        }
+    });
+
+    // Combine records created within the range with payments from older invoices made within the range.
+    const combined = [...baseFilteredTransactions, ...paymentsFromOlderInvoices];
+    
+    // Sort the final list by date.
+    return combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+
+  }, [baseFilteredTransactions, timeRange, sales, customStartDate, customEndDate]);
 
   const transactionTableTitle = useMemo(() => {
-    switch (timeRange) {
-        case 'today': return 'معاملات اليوم';
-        case 'week': return 'معاملات آخر أسبوع';
-        case 'month': return 'معاملات آخر شهر';
-        case 'year': return 'معاملات آخر سنة';
-        case 'custom': return `معاملات من ${customStartDate} إلى ${customEndDate}`;
-        case 'all': return 'جميع المعاملات';
-        default: return 'سجل المعاملات';
+    let title = '';
+    if (summaryFilter) {
+        switch (summaryFilter) {
+            case 'store': title = 'فواتير المحل'; break;
+            case 'online': title = 'فواتير أون لاين'; break;
+            case 'buyBack': title = 'فواتير مشتريات ذهب مستعمل'; break;
+            case 'silver': title = 'فواتير حركة الفضة'; break;
+        }
+        title += ' | ';
     }
-  }, [timeRange, customStartDate, customEndDate]);
+    
+    switch (timeRange) {
+        case 'today': return title + 'معاملات اليوم';
+        case 'week': return title + 'معاملات آخر أسبوع';
+        case 'month': return title + 'معاملات آخر شهر';
+        case 'year': return title + 'معاملات آخر سنة';
+        case 'custom': return `معاملات من ${customStartDate} إلى ${customEndDate}`;
+        case 'all': return title.length > 0 ? title.slice(0, -3).trim() : 'جميع المعاملات';
+        default: return title + 'سجل المعاملات';
+    }
+  }, [timeRange, customStartDate, customEndDate, summaryFilter]);
 
   const handleGenerateInsights = async () => {
     setIsGeneratingInsights(true);
@@ -371,6 +647,51 @@ ${JSON.stringify(dataForAI)}
           colorClass="bg-blue-100 text-blue-600"
         />
       </div>
+
+      <div className="bg-white shadow-lg rounded-xl p-4 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <h3 className="text-lg font-bold text-gray-800">تصفية حسب الفترة الزمنية</h3>
+          <div className="flex flex-wrap items-center gap-2">
+            {timeRangeOptions.map(option => (
+                <button
+                    key={option.key}
+                    onClick={() => setTimeRange(option.key)}
+                    className={`px-4 py-2 text-sm font-semibold rounded-full transition-colors ${
+                        timeRange === option.key
+                            ? 'bg-blue-600 text-white shadow'
+                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                    }`}
+                >
+                    {option.label}
+                </button>
+            ))}
+          </div>
+        </div>
+        {timeRange === 'custom' && (
+            <div className="flex flex-wrap items-center gap-4 p-4 bg-gray-50 rounded-lg border animate-fade-in">
+                <div>
+                    <label htmlFor="start-date" className="block text-sm font-medium text-gray-700">من تاريخ</label>
+                    <input
+                        type="date"
+                        id="start-date"
+                        value={customStartDate}
+                        onChange={e => setCustomStartDate(e.target.value)}
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    />
+                </div>
+                <div>
+                    <label htmlFor="end-date" className="block text-sm font-medium text-gray-700">إلى تاريخ</label>
+                    <input
+                        type="date"
+                        id="end-date"
+                        value={customEndDate}
+                        onChange={e => setCustomEndDate(e.target.value)}
+                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                    />
+                </div>
+            </div>
+        )}
+      </div>
       
       <div className="bg-white shadow-lg rounded-xl p-6">
         <h3 className="text-xl font-bold text-gray-800 mb-4">أداء آخر 30 يومًا</h3>
@@ -439,7 +760,10 @@ ${JSON.stringify(dataForAI)}
             {summaryTabs.map(tab => (
                  <button
                     key={tab.key}
-                    onClick={() => setActiveSummaryTab(tab.key)}
+                    onClick={() => {
+                        setActiveSummaryTab(tab.key);
+                        setSummaryFilter(tab.key);
+                    }}
                     className={`px-4 py-2 text-sm font-semibold rounded-full transition-all duration-300 ${
                         activeSummaryTab === tab.key
                             ? 'bg-indigo-600 text-white shadow-md'
@@ -449,6 +773,16 @@ ${JSON.stringify(dataForAI)}
                     {tab.label}
                 </button>
             ))}
+            {summaryFilter && (
+                <button 
+                    onClick={() => setSummaryFilter(null)} 
+                    className="px-3 py-1.5 text-xs font-semibold rounded-full bg-red-100 text-red-700 hover:bg-red-200 animate-fade-in flex items-center gap-1"
+                    title="إلغاء فلترة جدول المعاملات حسب الملخص"
+                >
+                    <span className="font-bold">&times;</span>
+                    <span>إلغاء الفلتر</span>
+                </button>
+            )}
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
@@ -612,53 +946,8 @@ ${JSON.stringify(dataForAI)}
         )}
       </div>
 
-      <div className="bg-white shadow-lg rounded-xl p-4 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-4">
-          <h3 className="text-lg font-bold text-gray-800">عرض المعاملات</h3>
-          <div className="flex flex-wrap items-center gap-2">
-            {timeRangeOptions.map(option => (
-                <button
-                    key={option.key}
-                    onClick={() => setTimeRange(option.key)}
-                    className={`px-4 py-2 text-sm font-semibold rounded-full transition-colors ${
-                        timeRange === option.key
-                            ? 'bg-blue-600 text-white shadow'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                    }`}
-                >
-                    {option.label}
-                </button>
-            ))}
-          </div>
-        </div>
-        {timeRange === 'custom' && (
-            <div className="flex flex-wrap items-center gap-4 p-4 bg-gray-50 rounded-lg border animate-fade-in">
-                <div>
-                    <label htmlFor="start-date" className="block text-sm font-medium text-gray-700">من تاريخ</label>
-                    <input
-                        type="date"
-                        id="start-date"
-                        value={customStartDate}
-                        onChange={e => setCustomStartDate(e.target.value)}
-                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    />
-                </div>
-                <div>
-                    <label htmlFor="end-date" className="block text-sm font-medium text-gray-700">إلى تاريخ</label>
-                    <input
-                        type="date"
-                        id="end-date"
-                        value={customEndDate}
-                        onChange={e => setCustomEndDate(e.target.value)}
-                        className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-                    />
-                </div>
-            </div>
-        )}
-      </div>
-
       <TransactionTable 
-        transactions={filteredTransactions} 
+        transactions={transactionsForDisplay} 
         title={transactionTableTitle} 
         colorClass="bg-gray-100"
         onDelete={onDeleteRecord}

@@ -1,14 +1,13 @@
-
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import type { Transaction, InvoiceItem, SaleType, ProductCategory, Karat, WorkmanshipType, Invoice, SaleChannel } from '../types';
-import { TransactionType } from '../types';
+import type { Transaction, InvoiceItem, SaleType, ProductCategory, Karat, WorkmanshipType, Invoice, SaleChannel, Payment, PaymentMethod } from '../types';
+import { TransactionType, PaymentMethod as PaymentMethodEnum } from '../types';
 import { TransactionTable } from '../components/TransactionTable';
-import { PlusIcon, TrashIcon, PencilIcon, SparklesIcon, WhatsAppIcon, SearchIcon } from '../components/icons/Icons';
+import { PlusIcon, TrashIcon, PencilIcon, SparklesIcon, WhatsAppIcon, SearchIcon, CreditCardIcon, WalletIcon } from '../components/icons/Icons';
 
 interface SalesPageProps {
   sales: Invoice[];
-  addSale: (invoice: Omit<Invoice, 'id'>) => void;
-  updateSale: (id: string, invoice: Omit<Invoice, 'id'>) => void;
+  addSale: (invoice: Omit<Invoice, 'id' | 'amountPaid' | 'remainingBalance'>) => void;
+  updateSale: (id: string, invoice: Omit<Invoice, 'id' | 'amountPaid' | 'remainingBalance'>) => void;
   deleteSale: (id: string, type: TransactionType | 'invoice') => void;
   onInvoiceClick: (invoice: Invoice) => void;
   recordToEditId: string | null;
@@ -24,35 +23,54 @@ const formatCurrency = (amount: number) => {
     }).format(amount);
 };
 
+const paymentMethodLabels: Record<PaymentMethod, string> = {
+    CASH: 'كاش',
+    E_WALLET: 'محفظة إلكترونية',
+    INSTAPAY: 'انستا باي',
+    FAWRY: 'فوري',
+};
+
 const sendInvoiceWhatsApp = (
     customerPhone: string,
     netInvoiceTotal: number,
     paymentAmount: number,
     remainingBalance: number,
-    totalWeight: number
+    items: InvoiceItem[]
 ) => {
     if (!customerPhone || customerPhone.length !== 11) {
         alert('يرجى إدخال رقم هاتف صحيح مكون من 11 رقمًا.');
         return;
     }
+    const totalWeight = items.reduce((sum, item) => sum + item.weight, 0);
     const roundedBalance = Math.round(remainingBalance);
     const balanceText = roundedBalance > 0
-        ? `المبلغ المتبقي: ${formatCurrency(roundedBalance)}`
+        ? `*المبلغ المتبقي: ${formatCurrency(roundedBalance)}*`
         : roundedBalance < 0
-        ? `المبلغ المستحق لكم: ${formatCurrency(Math.abs(roundedBalance))}`
-        : `الرصيد: ${formatCurrency(0)}`;
+        ? `*المبلغ المستحق لكم: ${formatCurrency(Math.abs(roundedBalance))}*`
+        : `*الرصيد: ${formatCurrency(0)}*`;
+    
+    const itemsText = items.map(item => {
+        const type = item.saleType === 'SELL' ? 'بيع' : 'شراء';
+        const category = item.category === 'GOLD' ? `ذهب ${item.karat}` : 'فضة';
+        const desc = item.description ? `(${item.description})` : '';
+        return `- *${type}*: ${category} ${desc} - وزن: ${item.weight.toFixed(2)} جم - إجمالي: ${formatCurrency(item.total)}`;
+    }).join('\n');
 
 
     const message = `
-شكراً لشرائك من الفادي للمجوهرات
+*فاتورة من الفادي للمجوهرات*
 --------------------
-إجمالي وزن القطع: ${totalWeight.toFixed(2)} جرام
-إجمالي المبلغ المطلوب: ${formatCurrency(netInvoiceTotal)}
-المبلغ المدفوع: ${formatCurrency(paymentAmount)}
+*تفاصيل الفاتورة:*
+${itemsText}
+--------------------
+*ملخص:*
+- إجمالي وزن القطع: ${totalWeight.toFixed(2)} جرام
+- صافي الفاتورة: ${formatCurrency(netInvoiceTotal)}
+- المبلغ المدفوع: ${formatCurrency(paymentAmount)}
 ${balanceText}
 --------------------
 شكراً لك!
-`.trim();
+`.trim().replace(/\n\s*\n/g, '\n');
 
     const whatsappUrl = `https://wa.me/2${customerPhone}?text=${encodeURIComponent(message)}`;
     window.open(whatsappUrl, '_blank');
@@ -61,6 +79,7 @@ ${balanceText}
 
 export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale, deleteSale, onInvoiceClick, recordToEditId, onDoneEditing }) => {
     const [invoiceItems, setInvoiceItems] = useState<InvoiceItem[]>([]);
+    const [currentPayments, setCurrentPayments] = useState<Payment[]>([]);
     const [editingItemId, setEditingItemId] = useState<string | null>(null);
     const [editingInvoiceId, setEditingInvoiceId] = useState<string | null>(null);
     const [isGenerating, setIsGenerating] = useState(false);
@@ -86,6 +105,9 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
     const [customerAddress, setCustomerAddress] = useState('');
     const [shipping, setShipping] = useState('');
     const [notes, setNotes] = useState('');
+    
+    // Payment form state
+    const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethodEnum.CASH);
     const [paymentAmount, setPaymentAmount] = useState('');
 
     const itemTotal = useMemo(() => {
@@ -121,14 +143,11 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
     const shippingCost = useMemo(() => saleChannel === 'ONLINE' ? (parseFloat(shipping) || 0) : 0, [shipping, saleChannel]);
     const netInvoiceTotal = useMemo(() => salesTotalInInvoice - purchasesTotalInInvoice + shippingCost, [salesTotalInInvoice, purchasesTotalInInvoice, shippingCost]);
     
+    const totalPaidOnInvoice = useMemo(() => currentPayments.reduce((sum, p) => sum + p.amount, 0), [currentPayments]);
+
     const isCreditToCustomer = useMemo(() => netInvoiceTotal < 0, [netInvoiceTotal]);
 
-    const finalAmountPaidForInvoice = useMemo(() => {
-        const payment = parseFloat(paymentAmount) || 0;
-        return isCreditToCustomer ? -payment : payment;
-    }, [paymentAmount, isCreditToCustomer]);
-
-    const remainingBalance = useMemo(() => netInvoiceTotal - finalAmountPaidForInvoice, [netInvoiceTotal, finalAmountPaidForInvoice]);
+    const remainingBalance = useMemo(() => netInvoiceTotal - totalPaidOnInvoice, [netInvoiceTotal, totalPaidOnInvoice]);
 
 
     const balanceDisplay = useMemo(() => {
@@ -173,6 +192,7 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
 
     const resetInvoice = useCallback(() => {
         setInvoiceItems([]);
+        setCurrentPayments([]);
         setInvoiceDate(new Date().toISOString().split('T')[0]);
         setSaleChannel('STORE');
         setCustomerName('');
@@ -193,6 +213,7 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
     
         // Populate form with invoice data
         setInvoiceItems(invoiceToEdit.items);
+        setCurrentPayments(invoiceToEdit.payments || []);
         setInvoiceDate(new Date(invoiceToEdit.date).toISOString().split('T')[0]);
         setSaleChannel(invoiceToEdit.channel);
         setCustomerName(invoiceToEdit.customer.name);
@@ -200,7 +221,6 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
         setCustomerAddress(invoiceToEdit.customer.address);
         setShipping(String(invoiceToEdit.shipping));
         setNotes(invoiceToEdit.notes);
-        setPaymentAmount(String(Math.abs(invoiceToEdit.amountPaid)));
         
         clearForm();
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -294,17 +314,37 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
         setInvoiceItems(items => items.filter(item => item.id !== id));
     };
 
+    const handleAddPayment = (e: React.FormEvent) => {
+        e.preventDefault();
+        const amount = parseFloat(paymentAmount);
+        if (isNaN(amount) || amount <= 0) return;
+
+        const newPayment: Payment = {
+            id: crypto.randomUUID(),
+            method: paymentMethod,
+            amount: isCreditToCustomer ? -amount : amount,
+            date: new Date().toISOString(),
+        };
+        setCurrentPayments(prev => [...prev, newPayment]);
+        setPaymentAmount('');
+    };
+
+    const handleDeletePayment = (id: string) => {
+        setCurrentPayments(prev => prev.filter(p => p.id !== id));
+    };
+
     const handleSaveInvoice = () => {
         if (invoiceItems.length === 0) return;
 
         const generatedDescription = invoiceItems.map(item => item.description || `${item.category === 'GOLD' ? `ذهب ${item.karat}` : 'فضة'} - ${item.weight} جرام`).join('، ');
 
-        const invoiceData: Omit<Invoice, 'id'> = {
+        const invoiceData: Omit<Invoice, 'id' | 'amountPaid' | 'remainingBalance'> = {
             type: TransactionType.SALE,
             date: new Date(`${invoiceDate}T00:00:00`).toISOString(),
             description: generatedDescription,
             amount: netInvoiceTotal,
             items: invoiceItems,
+            payments: currentPayments,
             customer: {
                 name: customerName,
                 phone: customerPhone,
@@ -313,9 +353,7 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
             channel: saleChannel,
             shipping: shippingCost,
             notes: notes,
-            amountPaid: finalAmountPaidForInvoice,
             netTotal: netInvoiceTotal,
-            remainingBalance: remainingBalance,
         };
         
         if (editingInvoiceId) {
@@ -326,13 +364,12 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
 
         // Send WhatsApp if phone number is valid
         if (customerPhone && customerPhone.trim().length === 11) {
-            const totalWeight = invoiceItems.reduce((sum, item) => sum + item.weight, 0);
             sendInvoiceWhatsApp(
                 customerPhone.trim(),
                 netInvoiceTotal,
-                parseFloat(paymentAmount) || 0,
+                totalPaidOnInvoice,
                 remainingBalance,
-                totalWeight
+                invoiceItems
             );
         }
 
@@ -531,10 +568,45 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
                         {saleChannel === 'ONLINE' && <div className="flex justify-between items-center"><span className="font-medium text-gray-600">مصاريف الشحن:</span> <span className="font-bold text-gray-700">{formatCurrency(shippingCost)}</span></div>}
                         <div className="flex justify-between items-center text-3xl font-bold border-t pt-2 mt-2"><span className="">صافي الفاتورة:</span> <span className="text-blue-700">{formatCurrency(netInvoiceTotal)}</span></div>
                      </div>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">{isCreditToCustomer ? 'المبلغ المدفوع للعميل' : 'المدفوع من العميل'}</label>
-                            <input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" className="mt-1 block w-full text-lg px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"/>
+                     
+                     <div className="space-y-4">
+                        <form onSubmit={handleAddPayment} className="grid grid-cols-1 md:grid-cols-3 gap-2 items-end">
+                             <div className="md:col-span-1">
+                                <label className="block text-sm font-medium text-gray-700">طريقة الدفع</label>
+                                <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md">
+                                    {Object.entries(paymentMethodLabels).map(([key, label]) => (
+                                        <option key={key} value={key}>{label}</option>
+                                    ))}
+                                </select>
+                            </div>
+                            <div className="md:col-span-1">
+                                <label className="block text-sm font-medium text-gray-700">{isCreditToCustomer ? 'المبلغ المدفوع للعميل' : 'المدفوع من العميل'}</label>
+                                <input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md"/>
+                            </div>
+                            <button type="submit" className="md:col-span-1 bg-gray-700 text-white font-semibold py-2 px-4 rounded-md hover:bg-gray-800 transition-colors">إضافة دفعة</button>
+                        </form>
+                        
+                        {currentPayments.length > 0 && (
+                            <div className="space-y-2">
+                                {currentPayments.map(p => (
+                                    <div key={p.id} className="bg-gray-100 p-2 rounded-md flex justify-between items-center">
+                                        <div className="flex items-center gap-2">
+                                            <span className="font-semibold text-gray-700">{paymentMethodLabels[p.method]}</span>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            <span className={`font-bold text-lg ${p.amount >= 0 ? 'text-green-700' : 'text-red-700'}`}>{formatCurrency(p.amount)}</span>
+                                            <button onClick={() => handleDeletePayment(p.id)} className="text-red-500 hover:text-red-700 p-1 rounded-full hover:bg-red-100"><TrashIcon size={4}/></button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                     </div>
+
+                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center pt-4 border-t">
+                        <div className="bg-green-50 p-3 rounded-md text-center">
+                            <p className="text-sm font-medium text-green-800">إجمالي المدفوع</p>
+                            <p className="text-3xl font-bold text-green-600">{formatCurrency(totalPaidOnInvoice)}</p>
                         </div>
                          <div className={`${balanceDisplay.containerClass} p-3 rounded-md text-center`}>
                             <p className={`text-sm font-medium ${balanceDisplay.labelClass}`}>{balanceDisplay.label}</p>
