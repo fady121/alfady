@@ -1,6 +1,5 @@
 import React, { useState, useMemo } from 'react';
 import type { Transaction, Invoice, SalesSummary, SalesSummaryItem, PurchasesSummary, LogEntry, RecordType, Trader, TraderTransaction } from '../types';
-import { TransactionType } from '../types';
 import { StatCard } from '../components/StatCard';
 import { TransactionTable } from '../components/TransactionTable';
 import { ChartPieIcon, ShoppingBagIcon, CashIcon, TrendingUpIcon, DocumentReportIcon, ScaleIcon, SparklesIcon, SearchIcon } from '../components/icons/Icons';
@@ -53,50 +52,6 @@ const PurchaseSummaryDetails: React.FC<{title: string, value: string, valueClass
     </div>
 );
 
-const getDateRange = (timeRange: TimeRange, customStartDate?: string, customEndDate?: string): { start: Date; end: Date } | null => {
-    const now = new Date();
-    let start: Date;
-    let end: Date;
-
-    switch (timeRange) {
-        case 'today':
-            start = new Date(now);
-            start.setHours(3, 0, 0, 0);
-            if (now.getHours() < 3) {
-                start.setDate(start.getDate() - 1);
-            }
-            end = new Date(start);
-            end.setDate(end.getDate() + 1);
-            return { start, end };
-        case 'week':
-            const dayOfWeek = now.getDay();
-            const diffToSat = (dayOfWeek + 1) % 7;
-            start = new Date(now);
-            start.setDate(now.getDate() - diffToSat);
-            start.setHours(3, 0, 0, 0);
-            end = new Date(start);
-            end.setDate(start.getDate() + 7);
-            return { start, end };
-        case 'month':
-            start = new Date(now.getFullYear(), now.getMonth(), 1, 3, 0, 0, 0);
-            end = new Date(now.getFullYear(), now.getMonth() + 1, 1, 3, 0, 0, 0);
-            return { start, end };
-        case 'year':
-            start = new Date(now.getFullYear(), 0, 1, 3, 0, 0, 0);
-            end = new Date(now.getFullYear() + 1, 0, 1, 3, 0, 0, 0);
-            return { start, end };
-        case 'custom':
-            if (!customStartDate || !customEndDate) return null;
-            start = new Date(`${customStartDate}T03:00:00`);
-            end = new Date(customEndDate);
-            end.setDate(end.getDate() + 1);
-            end.setHours(3, 0, 0, 0);
-            return { start, end };
-        default:
-            return null;
-    }
-};
-
 
 export const HomePage: React.FC<HomePageProps> = ({ 
     totalSales, 
@@ -121,20 +76,86 @@ export const HomePage: React.FC<HomePageProps> = ({
   const [summaryFilter, setSummaryFilter] = useState<SummaryTab | null>(null);
 
   const timeFilteredSales = useMemo(() => {
-    const range = getDateRange(timeRange, customStartDate, customEndDate);
-    if (!range) return sales; // If 'all' or invalid custom range
-    return sales.filter(s => {
-      const transactionDate = new Date(s.date);
-      return transactionDate >= range.start && transactionDate < range.end;
+    if (timeRange === 'all') return sales;
+    
+    const now = new Date();
+    return sales.filter(t => {
+      const transactionDate = new Date(t.date);
+      switch (timeRange) {
+        case 'today': {
+          const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+          const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+          return transactionDate >= startOfToday && transactionDate <= endOfToday;
+        }
+        case 'week': {
+          const oneWeekAgo = new Date(now);
+          oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+          oneWeekAgo.setHours(0, 0, 0, 0);
+          return transactionDate >= oneWeekAgo;
+        }
+        case 'month': {
+          const oneMonthAgo = new Date(now);
+          oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+          oneMonthAgo.setHours(0, 0, 0, 0);
+          return transactionDate >= oneMonthAgo;
+        }
+        case 'year': {
+          const oneYearAgo = new Date(now);
+          oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+          oneYearAgo.setHours(0, 0, 0, 0);
+          return transactionDate >= oneYearAgo;
+        }
+        case 'custom': {
+          if (!customStartDate || !customEndDate) return false;
+          const start = new Date(`${customStartDate}T00:00:00`);
+          const end = new Date(`${customEndDate}T23:59:59`);
+          return transactionDate >= start && transactionDate <= end;
+        }
+        default:
+          return false;
+      }
     });
   }, [sales, timeRange, customStartDate, customEndDate]);
 
   const timeFilteredTraderTransactions = useMemo(() => {
-    const range = getDateRange(timeRange, customStartDate, customEndDate);
-    if (!range) return traderTransactions; // If 'all' or invalid custom range
+    if (timeRange === 'all') return traderTransactions;
+
+    const now = new Date();
     return traderTransactions.filter(t => {
       const transactionDate = new Date(t.date);
-      return transactionDate >= range.start && transactionDate < range.end;
+      switch (timeRange) {
+        case 'today': {
+          const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+          const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+          return transactionDate >= startOfToday && transactionDate <= endOfToday;
+        }
+        case 'week': {
+          const oneWeekAgo = new Date(now);
+          oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+          oneWeekAgo.setHours(0, 0, 0, 0);
+          return transactionDate >= oneWeekAgo;
+        }
+        case 'month': {
+          const oneMonthAgo = new Date(now);
+          oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+          oneMonthAgo.setHours(0, 0, 0, 0);
+          return transactionDate >= oneMonthAgo;
+        }
+        case 'year': {
+          const oneYearAgo = new Date(now);
+          oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+          oneYearAgo.setHours(0, 0, 0, 0);
+          return transactionDate >= oneYearAgo;
+        }
+        case 'custom': {
+          if (!customStartDate || !customEndDate) return false;
+          const start = new Date(`${customStartDate}T00:00:00`);
+          const end = new Date(`${customEndDate}T23:59:59`);
+          return transactionDate >= start && transactionDate <= end;
+        }
+        default:
+          return false;
+      }
     });
   }, [traderTransactions, timeRange, customStartDate, customEndDate]);
 
@@ -402,18 +423,48 @@ export const HomePage: React.FC<HomePageProps> = ({
             .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
     }, [allTransactions]);
 
-  const baseFilteredTransactions = useMemo(() => {
+  const filteredTransactions = useMemo(() => {
     let results = allTransactions;
 
     // Time filtering
     if (timeRange !== 'all') {
-      const range = getDateRange(timeRange, customStartDate, customEndDate);
-      if (range) {
-          results = results.filter(t => {
-            const transactionDate = new Date(t.date);
-            return transactionDate >= range.start && transactionDate < range.end;
-          });
-      }
+      const now = new Date();
+      results = results.filter(t => {
+        const transactionDate = new Date(t.date);
+        switch (timeRange) {
+          case 'today': {
+            const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+            const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+            return transactionDate >= startOfToday && transactionDate <= endOfToday;
+          }
+          case 'week': {
+            const oneWeekAgo = new Date(now);
+            oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+            oneWeekAgo.setHours(0, 0, 0, 0);
+            return transactionDate >= oneWeekAgo;
+          }
+          case 'month': {
+            const oneMonthAgo = new Date(now);
+            oneMonthAgo.setMonth(oneMonthAgo.getMonth() - 1);
+            oneMonthAgo.setHours(0, 0, 0, 0);
+            return transactionDate >= oneMonthAgo;
+          }
+          case 'year': {
+            const oneYearAgo = new Date(now);
+            oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+            oneYearAgo.setHours(0, 0, 0, 0);
+            return transactionDate >= oneYearAgo;
+          }
+          case 'custom': {
+            if (!customStartDate || !customEndDate) return false;
+            const start = new Date(`${customStartDate}T00:00:00`);
+            const end = new Date(`${customEndDate}T23:59:59`);
+            return transactionDate >= start && transactionDate <= end;
+          }
+          default:
+            return false;
+        }
+      });
     }
 
     // Summary Tab Filtering
@@ -459,56 +510,6 @@ export const HomePage: React.FC<HomePageProps> = ({
     return results;
   }, [allTransactions, timeRange, customStartDate, customEndDate, searchQuery, summaryFilter]);
 
-  const transactionsForDisplay = useMemo(() => {
-    if (timeRange === 'all') {
-        return baseFilteredTransactions;
-    }
-
-    const range = getDateRange(timeRange, customStartDate, customEndDate);
-
-    // If the date range is invalid (e.g., custom range not set), just return the base transactions
-    if (!range) {
-        return baseFilteredTransactions;
-    }
-
-    const { start: startDate, end: endDate } = range;
-
-    const paymentsFromOlderInvoices: LogEntry[] = [];
-    
-    // Iterate over ALL sales to find payments made within the time range on older invoices.
-    sales.forEach(invoice => {
-        const invoiceDate = new Date(invoice.date);
-        
-        // Only look at invoices created BEFORE the current time range starts
-        if (invoiceDate < startDate) {
-             (invoice.payments || []).forEach(payment => {
-                const paymentDate = new Date(payment.date);
-                // Check if the payment was made WITHIN the current time range
-                if (paymentDate >= startDate && paymentDate < endDate) {
-                    const isDebtPayment = payment.amount > 0; // Customer paying us
-                    
-                    const virtualTransaction: LogEntry = {
-                        id: `payment-${payment.id}`,
-                        type: isDebtPayment ? TransactionType.DEBT_PAYMENT : TransactionType.CREDIT_PAYMENT,
-                        date: payment.date,
-                        description: `${isDebtPayment ? 'تحصيل دفعة من' : 'سداد دفعة إلى'} ${invoice.customer.name}`,
-                        amount: Math.abs(payment.amount),
-                        paymentMethod: payment.method,
-                        recordType: 'general',
-                    };
-                    paymentsFromOlderInvoices.push(virtualTransaction);
-                }
-            });
-        }
-    });
-
-    // Combine records created within the range with payments from older invoices made within the range.
-    const combined = [...baseFilteredTransactions, ...paymentsFromOlderInvoices];
-    
-    // Sort the final list by date.
-    return combined.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-  }, [baseFilteredTransactions, timeRange, sales, customStartDate, customEndDate]);
 
   const transactionTableTitle = useMemo(() => {
     let title = '';
@@ -947,7 +948,7 @@ ${JSON.stringify(dataForAI)}
       </div>
 
       <TransactionTable 
-        transactions={transactionsForDisplay} 
+        transactions={filteredTransactions} 
         title={transactionTableTitle} 
         colorClass="bg-gray-100"
         onDelete={onDeleteRecord}

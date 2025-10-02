@@ -8,20 +8,6 @@ export enum TransactionType {
   EXPENSE = 'EXPENSE', // مصروف
 }
 
-export enum PaymentMethod {
-  CASH = 'CASH',
-  E_WALLET = 'E_WALLET',
-  INSTAPAY = 'INSTAPAY',
-  FAWRY = 'FAWRY',
-}
-
-export interface Payment {
-  id: string;
-  method: PaymentMethod;
-  amount: number;
-  date: string; // ISO string
-}
-
 export type PurchaseCategory = 'GOLD' | 'SILVER';
 
 export type TraderCategory = 'GOLD' | 'SILVER';
@@ -58,7 +44,6 @@ export interface Transaction {
   date: string; // ISO String
   description: string;
   amount: number;
-  paymentMethod?: PaymentMethod; // For DEPOSIT and EXPENSE, defaults to CASH
   // Optional fields for new Purchase type
   category?: PurchaseCategory;
   trader?: {
@@ -99,12 +84,11 @@ export interface Customer {
 
 export interface Invoice extends Transaction {
     items: InvoiceItem[];
-    payments: Payment[]; // Replaces amountPaid as source of truth
     customer: Customer;
     channel: SaleChannel;
     shipping: number;
     notes: string;
-    amountPaid: number; // This will be a calculated field: sum of payments
+    amountPaid: number;
     netTotal: number;
     remainingBalance: number;
 }

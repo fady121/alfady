@@ -1,16 +1,16 @@
+
 import React, { useMemo, useState, useEffect } from 'react';
 // FIX: Import LogEntry type.
-import type { Invoice, Transaction, LogEntry, Payment, PaymentMethod } from '../types';
-import { TransactionType, PaymentMethod as PaymentMethodEnum } from '../types';
+import type { Invoice, Transaction, LogEntry } from '../types';
+import { TransactionType } from '../types';
 import { TransactionTable } from '../components/TransactionTable';
-import { CashIcon, UserGroupIcon, ReceiptRefundIcon, SearchIcon, ArrowCircleDownIcon, ArrowCircleUpIcon, WalletIcon, CreditCardIcon } from '../components/icons/Icons';
+import { CashIcon, UserGroupIcon, ReceiptRefundIcon, SearchIcon, ArrowCircleDownIcon, ArrowCircleUpIcon } from '../components/icons/Icons';
 
 interface TreasuryPageProps {
   sales: Invoice[];
   transactions: Transaction[];
   balance: number;
-  walletBalances: Record<PaymentMethod, number>;
-  applyPayment: (invoiceId: string, payment: Omit<Payment, 'id' | 'date'>, type: 'DEBT' | 'CREDIT') => void;
+  applyPayment: (invoiceId: string, paymentAmount: number, type: TransactionType.DEBT_PAYMENT | TransactionType.CREDIT_PAYMENT) => void;
   addTransaction: (transaction: Omit<Transaction, 'id' | 'date'>) => void;
   initialView: 'log' | 'debts' | 'credits';
 }
@@ -32,19 +32,11 @@ const formatDate = (dateString: string) => {
     }).format(new Date(dateString));
 };
 
-const paymentMethodLabels: Record<PaymentMethod, string> = {
-    CASH: 'كاش',
-    E_WALLET: 'محفظة إلكترونية',
-    INSTAPAY: 'انستا باي',
-    FAWRY: 'فوري',
-};
-
 
 const TreasuryMovementForm: React.FC<{onAdd: (transaction: Omit<Transaction, 'id' | 'date'>) => void}> = ({ onAdd }) => {
     const [type, setType] = useState<TransactionType.DEPOSIT | TransactionType.EXPENSE>(TransactionType.DEPOSIT);
     const [description, setDescription] = useState('');
     const [amount, setAmount] = useState('');
-    const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(PaymentMethodEnum.CASH);
     const [error, setError] = useState('');
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -55,7 +47,7 @@ const TreasuryMovementForm: React.FC<{onAdd: (transaction: Omit<Transaction, 'id
             return;
         }
         
-        onAdd({ type, description, amount: parsedAmount, paymentMethod });
+        onAdd({ type, description, amount: parsedAmount });
 
         // Reset form
         setDescription('');
@@ -76,14 +68,6 @@ const TreasuryMovementForm: React.FC<{onAdd: (transaction: Omit<Transaction, 'id
                         <ArrowCircleUpIcon className="me-2" /> مصروف
                     </button>
                 </div>
-                 <div>
-                    <label htmlFor="treasury-payment-method" className="block text-sm font-medium text-gray-700">طريقة الدفع/الإيداع</label>
-                    <select id="treasury-payment-method" value={paymentMethod} onChange={e => setPaymentMethod(e.target.value as PaymentMethod)} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
-                         {Object.entries(paymentMethodLabels).map(([key, label]) => (
-                            <option key={key} value={key}>{label}</option>
-                        ))}
-                    </select>
-                </div>
                 <div>
                     <label htmlFor="treasury-desc" className="block text-sm font-medium text-gray-700">الوصف</label>
                     <input type="text" id="treasury-desc" value={description} onChange={e => setDescription(e.target.value)} placeholder={type === TransactionType.DEPOSIT ? 'مثال: إيداع رأس مال' : 'مثال: مصاريف كهرباء'} className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" required/>
@@ -101,47 +85,41 @@ const TreasuryMovementForm: React.FC<{onAdd: (transaction: Omit<Transaction, 'id
 };
 
 
-export const TreasuryPage: React.FC<TreasuryPageProps> = ({ sales, transactions, balance, walletBalances, applyPayment, addTransaction, initialView }) => {
+export const TreasuryPage: React.FC<TreasuryPageProps> = ({ sales, transactions, balance, applyPayment, addTransaction, initialView }) => {
   const [view, setView] = useState(initialView);
   const [debtSearch, setDebtSearch] = useState('');
   const [creditSearch, setCreditSearch] = useState('');
-  const [paymentInputs, setPaymentInputs] = useState<Record<string, { amount: string, method: PaymentMethod }>>({});
+  const [paymentInputs, setPaymentInputs] = useState<Record<string, string>>({});
 
   useEffect(() => {
     setView(initialView);
   }, [initialView]);
 
-  const handlePaymentInputChange = (invoiceId: string, field: 'amount' | 'method', value: string) => {
-    setPaymentInputs(prev => ({ 
-        ...prev, 
-        [invoiceId]: {
-            ...prev[invoiceId],
-            [field]: value
-        } 
-    }));
+  const handlePaymentInputChange = (invoiceId: string, value: string) => {
+    setPaymentInputs(prev => ({ ...prev, [invoiceId]: value }));
   };
 
   const handleApplyDebtPayment = (invoice: Invoice) => {
-    const input = paymentInputs[invoice.id] || { amount: '', method: PaymentMethodEnum.CASH };
-    const amount = parseFloat(input.amount);
+    const amountStr = paymentInputs[invoice.id] || '';
+    const amount = parseFloat(amountStr);
     if (isNaN(amount) || amount <= 0 || amount > invoice.remainingBalance) {
       alert('الرجاء إدخال مبلغ صحيح لا يتجاوز المتبقي.');
       return;
     }
-    applyPayment(invoice.id, { amount, method: input.method }, 'DEBT');
-    handlePaymentInputChange(invoice.id, 'amount', ''); // Clear input amount
+    applyPayment(invoice.id, amount, TransactionType.DEBT_PAYMENT);
+    handlePaymentInputChange(invoice.id, ''); // Clear input
   };
   
   const handleApplyCreditPayment = (invoice: Invoice) => {
-    const input = paymentInputs[invoice.id] || { amount: '', method: PaymentMethodEnum.CASH };
-    const amount = parseFloat(input.amount);
+    const amountStr = paymentInputs[invoice.id] || '';
+    const amount = parseFloat(amountStr);
     const absoluteBalance = Math.abs(invoice.remainingBalance);
     if (isNaN(amount) || amount <= 0 || amount > absoluteBalance) {
         alert('الرجاء إدخال مبلغ صحيح لا يتجاوز المستحق.');
         return;
     }
-    applyPayment(invoice.id, { amount, method: input.method }, 'CREDIT');
-    handlePaymentInputChange(invoice.id, 'amount', ''); // Clear input amount
+    applyPayment(invoice.id, amount, TransactionType.CREDIT_PAYMENT);
+    handlePaymentInputChange(invoice.id, ''); // Clear input
   };
 
   // FIX: Map sales and transactions to LogEntry to match the TransactionTable's expected prop type.
@@ -165,6 +143,8 @@ export const TreasuryPage: React.FC<TreasuryPageProps> = ({ sales, transactions,
         inv.customer.phone.includes(creditSearch.trim())
       );
   }, [sales, creditSearch]);
+
+  const balanceColor = balance >= 0 ? 'text-green-600' : 'text-red-600';
 
   const renderView = () => {
     switch (view) {
@@ -206,26 +186,17 @@ export const TreasuryPage: React.FC<TreasuryPageProps> = ({ sales, transactions,
                         <span className="mx-2">|</span>
                         <span>{`المدفوع: ${formatCurrency(inv.amountPaid)}`}</span>
                     </div>
-                    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <div className="mt-3 flex gap-2">
                         <input 
                             type="number"
                             placeholder="أدخل مبلغ الدفعة"
-                            value={paymentInputs[inv.id]?.amount || ''}
-                            onChange={(e) => handlePaymentInputChange(inv.id, 'amount', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
+                            value={paymentInputs[inv.id] || ''}
+                            onChange={(e) => handlePaymentInputChange(inv.id, e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"
                             max={inv.remainingBalance}
                             step="0.01"
                             min="0"
                         />
-                        <select 
-                            value={paymentInputs[inv.id]?.method || 'CASH'}
-                            onChange={(e) => handlePaymentInputChange(inv.id, 'method', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500"
-                        >
-                             {Object.entries(paymentMethodLabels).map(([key, label]) => (
-                                <option key={key} value={key}>{label}</option>
-                            ))}
-                        </select>
                         <button onClick={() => handleApplyDebtPayment(inv)} className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors whitespace-nowrap">
                             تسجيل دفعة
                         </button>
@@ -276,26 +247,17 @@ export const TreasuryPage: React.FC<TreasuryPageProps> = ({ sales, transactions,
                         <span className="mx-2">|</span>
                         <span>{`المدفوع: ${formatCurrency(inv.amountPaid)}`}</span>
                     </div>
-                    <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-2">
+                    <div className="mt-3 flex gap-2">
                         <input 
                             type="number"
                             placeholder="أدخل مبلغ السداد"
-                            value={paymentInputs[inv.id]?.amount || ''}
-                            onChange={(e) => handlePaymentInputChange(inv.id, 'amount', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500"
+                            value={paymentInputs[inv.id] || ''}
+                            onChange={(e) => handlePaymentInputChange(inv.id, e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
                             max={Math.abs(inv.remainingBalance)}
                             step="0.01"
                             min="0"
                         />
-                        <select 
-                            value={paymentInputs[inv.id]?.method || 'CASH'}
-                            onChange={(e) => handlePaymentInputChange(inv.id, 'method', e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500"
-                        >
-                             {Object.entries(paymentMethodLabels).map(([key, label]) => (
-                                <option key={key} value={key}>{label}</option>
-                            ))}
-                        </select>
                         <button onClick={() => handleApplyCreditPayment(inv)} className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors whitespace-nowrap">
                             سداد دفعة
                         </button>
@@ -319,19 +281,6 @@ export const TreasuryPage: React.FC<TreasuryPageProps> = ({ sales, transactions,
         );
     }
   };
-  
-  const WalletCard: React.FC<{title: string, balance: number, icon: React.ReactNode, color: string}> = ({ title, balance, icon, color }) => (
-    <div className={`p-4 rounded-lg shadow-md flex items-center ${color}`}>
-        <div className="p-3 rounded-full bg-white bg-opacity-30 mr-4">
-            {icon}
-        </div>
-        <div>
-            <h4 className="font-semibold text-white">{title}</h4>
-            <p className="text-2xl font-bold text-white">{formatCurrency(balance)}</p>
-        </div>
-    </div>
-);
-
 
   return (
     <div className="space-y-6">
@@ -341,19 +290,14 @@ export const TreasuryPage: React.FC<TreasuryPageProps> = ({ sales, transactions,
       </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 space-y-4">
-            <div className="bg-gradient-to-br from-blue-500 to-indigo-600 p-6 rounded-lg shadow-lg text-white">
-                 <h3 className="text-xl font-bold">إجمالي الرصيد النقدي</h3>
-                 <p className={`text-5xl font-extrabold mt-2 ${balance >= 0 ? 'text-white' : 'text-yellow-300'}`}>
-                    {formatCurrency(balance)}
-                 </p>
+        <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow-lg flex flex-col items-center justify-center">
+            <div className="flex items-center text-blue-600">
+                <CashIcon size={8} />
+                <h3 className="text-xl font-bold me-4">الرصيد النقدي الحالي بالخزنة</h3>
             </div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                 <WalletCard title="الكاش" balance={walletBalances.CASH} icon={<CashIcon size={6} className="text-green-800"/>} color="bg-gradient-to-br from-green-500 to-emerald-600" />
-                 <WalletCard title="المحفظة" balance={walletBalances.E_WALLET} icon={<WalletIcon size={6} className="text-sky-800"/>} color="bg-gradient-to-br from-sky-500 to-cyan-600" />
-                 <WalletCard title="انستا باي" balance={walletBalances.INSTAPAY} icon={<CreditCardIcon size={6} className="text-purple-800"/>} color="bg-gradient-to-br from-purple-500 to-violet-600" />
-                 <WalletCard title="فوري" balance={walletBalances.FAWRY} icon={<CreditCardIcon size={6} className="text-amber-800"/>} color="bg-gradient-to-br from-amber-500 to-orange-600" />
-            </div>
+            <p className={`text-6xl font-extrabold mt-2 ${balanceColor}`}>
+            {formatCurrency(balance)}
+            </p>
         </div>
         <TreasuryMovementForm onAdd={addTransaction} />
       </div>
