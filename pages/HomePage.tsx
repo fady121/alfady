@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import type { Transaction, Invoice, SalesSummary, SalesSummaryItem, PurchasesSummary, LogEntry, RecordType, Trader, TraderTransaction } from '../types';
 import { StatCard } from '../components/StatCard';
@@ -35,11 +36,11 @@ const formatWeight = (weight: number) => {
     return `${weight.toFixed(3)} جرام`;
 };
 
-const SalesSummaryDetails: React.FC<{title: string, data: SalesSummaryItem}> = ({title, data}) => (
+const SalesSummaryDetails: React.FC<{title: string, data: SalesSummaryItem, valueColorClass?: string}> = ({title, data, valueColorClass = 'text-blue-600'}) => (
     <div className="flex justify-between items-center py-2 border-b border-gray-200 last:border-b-0">
         <span className="font-semibold text-gray-700">{title}</span>
         <div className="text-left">
-            <p className="text-base font-bold text-blue-600">{formatCurrency(data.cash)}</p>
+            <p className={`text-base font-bold ${valueColorClass}`}>{formatCurrency(data.cash)}</p>
             <p className="text-xs text-gray-500">{`${data.weight.toFixed(2)} جرام`}</p>
         </div>
     </div>
@@ -619,6 +620,8 @@ ${JSON.stringify(dataForAI)}
       </div>
   );
 
+  const netProfitColorClass = netProfit >= 0 ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600';
+  const treasuryBalanceColorClass = treasuryBalance >= 0 ? 'bg-blue-100 text-blue-600' : 'bg-red-100 text-red-600';
 
   return (
     <div className="space-y-8">
@@ -639,13 +642,13 @@ ${JSON.stringify(dataForAI)}
           title="صافي الربح" 
           value={formatCurrency(netProfit)} 
           icon={<TrendingUpIcon />} 
-          colorClass="bg-yellow-100 text-yellow-600"
+          colorClass={netProfitColorClass}
         />
         <StatCard 
           title="رصيد الخزنة" 
           value={formatCurrency(treasuryBalance)} 
           icon={<CashIcon />} 
-          colorClass="bg-blue-100 text-blue-600"
+          colorClass={treasuryBalanceColorClass}
         />
       </div>
 
@@ -792,12 +795,12 @@ ${JSON.stringify(dataForAI)}
                     <div className="bg-gray-50 p-4 rounded-lg">
                         <h4 className="font-bold text-lg text-gray-700 mb-2">مبيعات المحل</h4>
                         <div className="space-y-1">
-                            <SalesSummaryDetails title="ذهب عيار 24" data={salesSummary.store.gold24} />
-                            <SalesSummaryDetails title="ذهب عيار 21" data={salesSummary.store.gold21} />
-                            <SalesSummaryDetails title="ذهب عيار 18" data={salesSummary.store.gold18} />
+                            <SalesSummaryDetails title="ذهب عيار 24" data={salesSummary.store.gold24} valueColorClass="text-green-600" />
+                            <SalesSummaryDetails title="ذهب عيار 21" data={salesSummary.store.gold21} valueColorClass="text-green-600" />
+                            <SalesSummaryDetails title="ذهب عيار 18" data={salesSummary.store.gold18} valueColorClass="text-green-600" />
                         </div>
                         <div className="mt-3 pt-3 border-t border-gray-300 space-y-2">
-                            <div className="flex justify-between items-center"><span className="font-bold text-indigo-800">إجمالي النقدية</span><p className="text-lg font-extrabold text-indigo-700">{formatCurrency(totalStoreCash)}</p></div>
+                            <div className="flex justify-between items-center"><span className="font-bold text-green-800">إجمالي النقدية</span><p className="text-lg font-extrabold text-green-700">{formatCurrency(totalStoreCash)}</p></div>
                             <div className="flex justify-between items-center"><span className="font-bold text-blue-800">إجمالي ذهب (معادل عيار 21)</span><p className="text-lg font-extrabold text-blue-700">{formatWeight(totalStoreGold21Equivalent)}</p></div>
                         </div>
                     </div>
@@ -809,12 +812,12 @@ ${JSON.stringify(dataForAI)}
                     <div className="bg-gray-50 p-4 rounded-lg">
                         <h4 className="font-bold text-lg text-gray-700 mb-2">مبيعات أون لاين</h4>
                         <div className="space-y-1">
-                            <SalesSummaryDetails title="ذهب عيار 24" data={salesSummary.online.gold24} />
-                            <SalesSummaryDetails title="ذهب عيار 21" data={salesSummary.online.gold21} />
-                            <SalesSummaryDetails title="ذهب عيار 18" data={salesSummary.online.gold18} />
+                            <SalesSummaryDetails title="ذهب عيار 24" data={salesSummary.online.gold24} valueColorClass="text-green-600" />
+                            <SalesSummaryDetails title="ذهب عيار 21" data={salesSummary.online.gold21} valueColorClass="text-green-600" />
+                            <SalesSummaryDetails title="ذهب عيار 18" data={salesSummary.online.gold18} valueColorClass="text-green-600" />
                         </div>
                          <div className="mt-3 pt-3 border-t border-gray-300 space-y-2">
-                            <div className="flex justify-between items-center"><span className="font-bold text-indigo-800">إجمالي النقدية</span><p className="text-lg font-extrabold text-indigo-700">{formatCurrency(totalOnlineCash)}</p></div>
+                            <div className="flex justify-between items-center"><span className="font-bold text-green-800">إجمالي النقدية</span><p className="text-lg font-extrabold text-green-700">{formatCurrency(totalOnlineCash)}</p></div>
                             <div className="flex justify-between items-center"><span className="font-bold text-blue-800">إجمالي ذهب (معادل عيار 21)</span><p className="text-lg font-extrabold text-blue-700">{formatWeight(totalOnlineGold21Equivalent)}</p></div>
                         </div>
                     </div>
@@ -826,9 +829,9 @@ ${JSON.stringify(dataForAI)}
                     <div className="bg-orange-50 p-4 rounded-lg border border-orange-200">
                         <h4 className="font-bold text-lg text-orange-800 mb-2">مشتريات الذهب (مستعمل)</h4>
                         <div className="space-y-1">
-                            <SalesSummaryDetails title="ذهب عيار 24" data={salesSummary.buyBack.gold24} />
-                            <SalesSummaryDetails title="ذهب عيار 21" data={salesSummary.buyBack.gold21} />
-                            <SalesSummaryDetails title="ذهب عيار 18" data={salesSummary.buyBack.gold18} />
+                            <SalesSummaryDetails title="ذهب عيار 24" data={salesSummary.buyBack.gold24} valueColorClass="text-red-600" />
+                            <SalesSummaryDetails title="ذهب عيار 21" data={salesSummary.buyBack.gold21} valueColorClass="text-red-600" />
+                            <SalesSummaryDetails title="ذهب عيار 18" data={salesSummary.buyBack.gold18} valueColorClass="text-red-600" />
                         </div>
                         <div className="mt-3 pt-3 border-t border-gray-300 space-y-2">
                              <div className="flex justify-between items-center"><span className="font-bold text-red-800">إجمالي النقدية المدفوعة</span><p className="text-lg font-extrabold text-red-700">{formatCurrency(totalBuyBackCash)}</p></div>
@@ -843,8 +846,8 @@ ${JSON.stringify(dataForAI)}
                     <div className="bg-gray-50 p-4 rounded-lg">
                         <h4 className="font-bold text-lg text-gray-700 mb-2">حركة الفضة (العملاء)</h4>
                         <div className="space-y-1">
-                            <SalesSummaryDetails title="مبيعات فضة" data={salesSummary.silver} />
-                            <SalesSummaryDetails title="مشتريات فضة (مستعمل)" data={salesSummary.buyBack.silver} />
+                            <SalesSummaryDetails title="مبيعات فضة" data={salesSummary.silver} valueColorClass="text-green-600" />
+                            <SalesSummaryDetails title="مشتريات فضة (مستعمل)" data={salesSummary.buyBack.silver} valueColorClass="text-red-600" />
                         </div>
                     </div>
                      <SummaryChart data={silverChartData} barColor="#64748b" dataKey="value" name="القيمة النقدية" unit="ج.م" />

@@ -1,20 +1,21 @@
 
+
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Header } from './components/Header';
 import { HomePage } from './pages/HomePage';
 import { SalesPage } from './pages/SalesPage';
 import { PurchasesPage } from './pages/PurchasesPage';
 import { TreasuryPage } from './pages/TreasuryPage';
-import { LoginPage } from './pages/LoginPage';
 import { useLocalStorage } from './hooks/useLocalStorage';
-import type { Page, Transaction, Invoice, SalesSummary, Trader, TraderTransaction, PurchasesSummary, LogEntry, RecordType, TraderTransactionWithDetails, TraderCategory, InvoiceItem, Karat } from './types';
+import type { Page, Transaction, Invoice, SalesSummary, Trader, TraderTransaction, PurchasesSummary, LogEntry, RecordType, TraderTransactionWithDetails, TraderCategory, InvoiceItem, Karat, SaleType, ProductCategory, WorkmanshipType, SaleChannel } from './types';
 import { TransactionType } from './types';
+import { CashIcon, ChartPieIcon, HomeIcon, ShoppingBagIcon, DownloadIcon, UploadIcon } from './components/icons/Icons';
+
 
 // Declare external libraries loaded via CDN
 declare var XLSX: any;
 
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useLocalStorage('isLoggedIn', false);
   const [activePage, setActivePage] = useState<Page>('home');
   const [sales, setSales] = useLocalStorage<Invoice[]>('sales', []);
   const [transactions, setTransactions] = useLocalStorage<Transaction[]>('transactions', []);
@@ -24,15 +25,12 @@ function App() {
   const [recordToEditId, setRecordToEditId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleLoginSuccess = () => {
-    setIsLoggedIn(true);
-  };
-
-  const handleLogout = () => {
-    if (window.confirm('هل أنت متأكد من تسجيل الخروج؟')) {
-      setIsLoggedIn(false);
-    }
-  };
+  const navItems = [
+    { id: 'home', label: 'الرئيسية', icon: <HomeIcon /> },
+    { id: 'sales', label: 'المبيعات', icon: <ChartPieIcon /> },
+    { id: 'purchases', label: 'المشتريات', icon: <ShoppingBagIcon /> },
+    { id: 'treasury', label: 'الخزنة', icon: <CashIcon /> },
+  ];
 
   // FIX: Updated function signature to be more specific, allowing for correct type narrowing.
   // This resolves an issue where the compiler couldn't infer all properties of an Invoice.
@@ -281,7 +279,7 @@ function App() {
             XLSX.utils.book_append_sheet(wb, wsGeneral, "المعاملات العامة");
           }
 
-          const sanitizeSheetName = (name: string) => name.replace(/[\[\]\*\/\\\?]/g, '_').substring(0, 31);
+          const sanitizeSheetName = (name: string) => name.replace(/[\\/\\?*\\[\\]]/g, '_').substring(0, 31);
 
           traders.forEach(trader => {
               const transactionsForTrader = traderTransactions
@@ -407,7 +405,7 @@ function App() {
                                   type: TransactionType.SALE,
                                   date: row['تاريخ الفاتورة'] instanceof Date ? row['تاريخ الفاتورة'].toISOString() : new Date().toISOString(),
                                   customer: { name: row['اسم العميل'], phone: row['هاتف العميل'], address: row['عنوان العميل'] },
-                                  channel: channel,
+                                  channel: channel as SaleChannel,
                                   notes: row['ملاحظات'],
                                   netTotal: Number(row['صافي الفاتورة'] || 0),
                                   amountPaid: Number(row['المدفوع'] || 0),
@@ -425,14 +423,15 @@ function App() {
                           const invoice = salesMap.get(invoiceId)!;
                           const newItem: InvoiceItem = {
                               id: row['ID القطعة'],
-                              saleType: row['نوع العملية'],
-                              category: row['التصنيف'],
+                              // FIX: Cast string values from Excel to their corresponding union types for type safety.
+                              saleType: row['نوع العملية'] as SaleType,
+                              category: row['التصنيف'] as ProductCategory,
                               // FIX: Cast the 'karat' value to the Karat type to resolve the type error.
                               karat: row['العيار'] ? Number(row['العيار']) as Karat : null,
                               description: row['الوصف'],
                               weight: Number(row['الوزن (جم)'] || 0),
                               pricePerGram: Number(row['سعر الجرام'] || 0),
-                              workmanshipType: row['نوع المصنعية'],
+                              workmanshipType: row['نوع المصنعية'] as WorkmanshipType,
                               workmanshipValue: row['قيمة المصنعية'] ? Number(row['قيمة المصنعية']) : undefined,
                               discountPercentage: row['الخصم (%)'] ? Number(row['الخصم (%)']) : undefined,
                               total: Number(row['إجمالي القطعة'] || 0),
@@ -552,10 +551,6 @@ function App() {
     }
   };
 
-  if (!isLoggedIn) {
-    return <LoginPage onLoginSuccess={handleLoginSuccess} />;
-  }
-
   return (
     <div className="min-h-screen bg-gray-50 text-gray-800">
       <input
@@ -570,11 +565,49 @@ function App() {
         setActivePage={setActivePage} 
         onExport={() => handleExportData(false)}
         onImport={triggerImport}
-        onLogout={handleLogout}
       />
-      <main className="p-4 sm:p-6 md:p-8">
+      <main className="p-4 sm:p-6 md:p-8 pb-32 md:pb-8">
         {renderPage()}
       </main>
+
+       {/* Mobile Navigation Footer */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t z-50 shadow-[0_-2px_5px_rgba(0,0,0,0.05)]">
+          <nav className="flex items-center justify-around p-1">
+              {navItems.map((item) => (
+              <button
+                  key={item.id}
+                  onClick={() => setActivePage(item.id as Page)}
+                  className={`flex flex-col items-center justify-center w-full p-2 text-xs font-medium rounded-md transition-colors duration-200 ${
+                  activePage === item.id
+                      ? 'bg-blue-100 text-blue-700'
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+              >
+                  <span className="mb-1">{item.icon}</span>
+                  {item.label}
+              </button>
+              ))}
+          </nav>
+          <div className="flex items-center justify-center flex-wrap gap-2 bg-gray-50 p-2 border-t">
+            <button
+                onClick={triggerImport}
+                className="flex items-center px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 rounded-md"
+                title="استيراد بيانات من ملف"
+            >
+                <UploadIcon size={5} className="me-2" />
+                <span>رفع نسخة</span>
+            </button>
+            <button
+                onClick={() => handleExportData(false)}
+                className="flex items-center px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 rounded-md"
+                title="تصدير البيانات الحالية إلى ملف"
+            >
+                <DownloadIcon size={5} className="me-2" />
+                <span>تنزيل نسخة</span>
+            </button>
+          </div>
+      </div>
+
     </div>
   );
 }
