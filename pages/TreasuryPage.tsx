@@ -1,8 +1,9 @@
 
+
 import React, { useMemo, useState, useEffect } from 'react';
 // FIX: Import LogEntry type.
-import type { Invoice, Transaction, LogEntry } from '../types';
-import { TransactionType } from '../types';
+import type { Invoice, Transaction, LogEntry, PaymentMethod } from '../types';
+import { TransactionType, paymentMethodLabels } from '../types';
 import { TransactionTable } from '../components/TransactionTable';
 import { CashIcon, UserGroupIcon, ReceiptRefundIcon, SearchIcon, ArrowCircleDownIcon, ArrowCircleUpIcon } from '../components/icons/Icons';
 
@@ -10,7 +11,8 @@ interface TreasuryPageProps {
   sales: Invoice[];
   transactions: Transaction[];
   balance: number;
-  applyPayment: (invoiceId: string, paymentAmount: number, type: TransactionType.DEBT_PAYMENT | TransactionType.CREDIT_PAYMENT) => void;
+  paymentMethodTotals: Record<PaymentMethod, number>;
+  applyPayment: (invoiceId: string, paymentAmount: number, paymentMethod: PaymentMethod, type: TransactionType.DEBT_PAYMENT | TransactionType.CREDIT_PAYMENT) => void;
   addTransaction: (transaction: Omit<Transaction, 'id' | 'date'>) => void;
   initialView: 'log' | 'debts' | 'credits';
 }
@@ -38,6 +40,7 @@ const TreasuryMovementForm: React.FC<{onAdd: (transaction: Omit<Transaction, 'id
     const [description, setDescription] = useState('');
     const [amount, setAmount] = useState('');
     const [error, setError] = useState('');
+    const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('CASH');
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
@@ -47,12 +50,13 @@ const TreasuryMovementForm: React.FC<{onAdd: (transaction: Omit<Transaction, 'id
             return;
         }
         
-        onAdd({ type, description, amount: parsedAmount });
+        onAdd({ type, description, amount: parsedAmount, method: paymentMethod });
 
         // Reset form
         setDescription('');
         setAmount('');
         setError('');
+        setPaymentMethod('CASH');
     };
 
     return (
@@ -76,6 +80,25 @@ const TreasuryMovementForm: React.FC<{onAdd: (transaction: Omit<Transaction, 'id
                     <label htmlFor="treasury-amount" className="block text-sm font-medium text-gray-700">المبلغ</label>
                     <input type="number" id="treasury-amount" value={amount} onChange={e => setAmount(e.target.value)} placeholder="0.00" className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" step="0.01" min="0" required/>
                 </div>
+                 <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">طريقة الدفع/الإيداع</label>
+                    <div className="flex flex-wrap gap-2">
+                        {(Object.keys(paymentMethodLabels) as PaymentMethod[]).map(method => (
+                            <button
+                                key={method}
+                                type="button"
+                                onClick={() => setPaymentMethod(method)}
+                                className={`px-4 py-2 text-sm font-semibold rounded-full transition-colors ${
+                                    paymentMethod === method
+                                        ? 'bg-blue-600 text-white shadow'
+                                        : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                }`}
+                            >
+                                {paymentMethodLabels[method]}
+                            </button>
+                        ))}
+                    </div>
+                </div>
                 <button type="submit" className={`w-full py-2.5 px-4 text-white font-bold rounded-lg shadow-md transition-colors ${type === TransactionType.DEPOSIT ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'}`}>
                     تسجيل الحركة
                 </button>
@@ -85,11 +108,13 @@ const TreasuryMovementForm: React.FC<{onAdd: (transaction: Omit<Transaction, 'id
 };
 
 
-export const TreasuryPage: React.FC<TreasuryPageProps> = ({ sales, transactions, balance, applyPayment, addTransaction, initialView }) => {
+export const TreasuryPage: React.FC<TreasuryPageProps> = ({ sales, transactions, balance, paymentMethodTotals, applyPayment, addTransaction, initialView }) => {
   const [view, setView] = useState(initialView);
   const [debtSearch, setDebtSearch] = useState('');
   const [creditSearch, setCreditSearch] = useState('');
   const [paymentInputs, setPaymentInputs] = useState<Record<string, string>>({});
+  const [paymentMethods, setPaymentMethods] = useState<Record<string, PaymentMethod>>({});
+
 
   useEffect(() => {
     setView(initialView);
@@ -99,6 +124,10 @@ export const TreasuryPage: React.FC<TreasuryPageProps> = ({ sales, transactions,
     setPaymentInputs(prev => ({ ...prev, [invoiceId]: value }));
   };
 
+  const handlePaymentMethodChange = (invoiceId: string, method: PaymentMethod) => {
+    setPaymentMethods(prev => ({...prev, [invoiceId]: method}));
+  };
+
   const handleApplyDebtPayment = (invoice: Invoice) => {
     const amountStr = paymentInputs[invoice.id] || '';
     const amount = parseFloat(amountStr);
@@ -106,7 +135,8 @@ export const TreasuryPage: React.FC<TreasuryPageProps> = ({ sales, transactions,
       alert('الرجاء إدخال مبلغ صحيح لا يتجاوز المتبقي.');
       return;
     }
-    applyPayment(invoice.id, amount, TransactionType.DEBT_PAYMENT);
+    const method = paymentMethods[invoice.id] || 'CASH';
+    applyPayment(invoice.id, amount, method, TransactionType.DEBT_PAYMENT);
     handlePaymentInputChange(invoice.id, ''); // Clear input
   };
   
@@ -118,7 +148,8 @@ export const TreasuryPage: React.FC<TreasuryPageProps> = ({ sales, transactions,
         alert('الرجاء إدخال مبلغ صحيح لا يتجاوز المستحق.');
         return;
     }
-    applyPayment(invoice.id, amount, TransactionType.CREDIT_PAYMENT);
+    const method = paymentMethods[invoice.id] || 'CASH';
+    applyPayment(invoice.id, amount, method, TransactionType.CREDIT_PAYMENT);
     handlePaymentInputChange(invoice.id, ''); // Clear input
   };
 
@@ -186,20 +217,37 @@ export const TreasuryPage: React.FC<TreasuryPageProps> = ({ sales, transactions,
                         <span className="mx-2">|</span>
                         <span>{`المدفوع: ${formatCurrency(inv.amountPaid)}`}</span>
                     </div>
-                    <div className="mt-3 flex gap-2">
-                        <input 
-                            type="number"
-                            placeholder="أدخل مبلغ الدفعة"
-                            value={paymentInputs[inv.id] || ''}
-                            onChange={(e) => handlePaymentInputChange(inv.id, e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"
-                            max={inv.remainingBalance}
-                            step="0.01"
-                            min="0"
-                        />
-                        <button onClick={() => handleApplyDebtPayment(inv)} className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors whitespace-nowrap">
-                            تسجيل دفعة
-                        </button>
+                    <div className="mt-3 space-y-3">
+                        <div className="flex flex-col sm:flex-row gap-2">
+                            <input 
+                                type="number"
+                                placeholder="أدخل مبلغ الدفعة"
+                                value={paymentInputs[inv.id] || ''}
+                                onChange={(e) => handlePaymentInputChange(inv.id, e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-green-500 focus:border-green-500 sm:text-sm"
+                                max={inv.remainingBalance}
+                                step="0.01"
+                                min="0"
+                            />
+                            <button onClick={() => handleApplyDebtPayment(inv)} className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700 transition-colors whitespace-nowrap">
+                                تسجيل دفعة
+                            </button>
+                        </div>
+                        <div className="flex flex-wrap gap-2 justify-center">
+                            {(Object.keys(paymentMethodLabels) as PaymentMethod[]).map(method => (
+                                <button
+                                    key={method}
+                                    onClick={() => handlePaymentMethodChange(inv.id, method)}
+                                    className={`px-3 py-1 text-xs font-semibold rounded-full transition-colors ${
+                                        (paymentMethods[inv.id] || 'CASH') === method
+                                            ? 'bg-blue-600 text-white'
+                                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                    }`}
+                                >
+                                    {paymentMethodLabels[method]}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                   </div>
                 ))
@@ -247,20 +295,37 @@ export const TreasuryPage: React.FC<TreasuryPageProps> = ({ sales, transactions,
                         <span className="mx-2">|</span>
                         <span>{`المدفوع: ${formatCurrency(inv.amountPaid)}`}</span>
                     </div>
-                    <div className="mt-3 flex gap-2">
-                        <input 
-                            type="number"
-                            placeholder="أدخل مبلغ السداد"
-                            value={paymentInputs[inv.id] || ''}
-                            onChange={(e) => handlePaymentInputChange(inv.id, e.target.value)}
-                            className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
-                            max={Math.abs(inv.remainingBalance)}
-                            step="0.01"
-                            min="0"
-                        />
-                        <button onClick={() => handleApplyCreditPayment(inv)} className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors whitespace-nowrap">
-                            سداد دفعة
-                        </button>
+                    <div className="mt-3 space-y-3">
+                        <div className="flex flex-col sm:flex-row gap-2">
+                            <input 
+                                type="number"
+                                placeholder="أدخل مبلغ السداد"
+                                value={paymentInputs[inv.id] || ''}
+                                onChange={(e) => handlePaymentInputChange(inv.id, e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-red-500 focus:border-red-500 sm:text-sm"
+                                max={Math.abs(inv.remainingBalance)}
+                                step="0.01"
+                                min="0"
+                            />
+                            <button onClick={() => handleApplyCreditPayment(inv)} className="bg-red-600 text-white px-4 py-2 rounded-md hover:bg-red-700 transition-colors whitespace-nowrap">
+                                سداد دفعة
+                            </button>
+                        </div>
+                        <div className="flex flex-wrap gap-2 justify-center">
+                            {(Object.keys(paymentMethodLabels) as PaymentMethod[]).map(method => (
+                                <button
+                                    key={method}
+                                    onClick={() => handlePaymentMethodChange(inv.id, method)}
+                                    className={`px-3 py-1 text-xs font-semibold rounded-full transition-colors ${
+                                        (paymentMethods[inv.id] || 'CASH') === method
+                                            ? 'bg-blue-600 text-white'
+                                            : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                                    }`}
+                                >
+                                    {paymentMethodLabels[method]}
+                                </button>
+                            ))}
+                        </div>
                     </div>
                   </div>
                 ))
@@ -290,14 +355,28 @@ export const TreasuryPage: React.FC<TreasuryPageProps> = ({ sales, transactions,
       </div>
       
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow-lg flex flex-col items-center justify-center">
-            <div className="flex items-center text-blue-600">
-                <CashIcon size={8} />
-                <h3 className="text-xl font-bold me-4">الرصيد النقدي الحالي بالخزنة</h3>
+        <div className="lg:col-span-2 bg-white p-6 rounded-lg shadow-lg">
+            <h3 className="text-xl font-bold text-gray-800 mb-4 flex items-center"><CashIcon size={7} className="me-2 text-blue-600"/> أرصدة الخزنة</h3>
+            <div className="space-y-3">
+                <div className="flex justify-between items-center p-3 bg-gray-100 rounded-lg">
+                    <span className="font-semibold text-gray-700">{paymentMethodLabels.CASH}</span>
+                    <span className="font-bold text-lg text-gray-900">{formatCurrency(paymentMethodTotals.CASH)}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-gray-100 rounded-lg">
+                    <span className="font-semibold text-gray-700">{paymentMethodLabels.EWALLET}</span>
+                    <span className="font-bold text-lg text-gray-900">{formatCurrency(paymentMethodTotals.EWALLET)}</span>
+                </div>
+                <div className="flex justify-between items-center p-3 bg-gray-100 rounded-lg">
+                    <span className="font-semibold text-gray-700">{paymentMethodLabels.INSTAPAY}</span>
+                    <span className="font-bold text-lg text-gray-900">{formatCurrency(paymentMethodTotals.INSTAPAY)}</span>
+                </div>
             </div>
-            <p className={`text-6xl font-extrabold mt-2 ${balanceColor}`}>
-            {formatCurrency(balance)}
-            </p>
+            <div className="mt-4 pt-4 border-t flex justify-between items-center">
+                <h4 className="text-2xl font-bold text-blue-700">إجمالي الرصيد</h4>
+                <p className={`text-4xl font-extrabold ${balanceColor}`}>
+                    {formatCurrency(balance)}
+                </p>
+            </div>
         </div>
         <TreasuryMovementForm onAdd={addTransaction} />
       </div>

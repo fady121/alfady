@@ -44,6 +44,7 @@ export interface Transaction {
   date: string; // ISO String
   description: string;
   amount: number;
+  method?: PaymentMethod;
   // Optional fields for new Purchase type
   category?: PurchaseCategory;
   trader?: {
@@ -82,6 +83,21 @@ export interface Customer {
     address: string;
 }
 
+export type PaymentMethod = 'CASH' | 'EWALLET' | 'INSTAPAY';
+
+export const paymentMethodLabels: Record<PaymentMethod, string> = {
+  CASH: 'نقدي (كاش)',
+  EWALLET: 'محفظة إلكترونية',
+  INSTAPAY: 'انستا باي',
+};
+
+export interface Payment {
+  amount: number;
+  method: PaymentMethod;
+  date: string; // ISO String
+}
+
+
 export interface Invoice extends Transaction {
     items: InvoiceItem[];
     customer: Customer;
@@ -89,6 +105,7 @@ export interface Invoice extends Transaction {
     shipping: number;
     notes: string;
     amountPaid: number;
+    payments?: Payment[];
     netTotal: number;
     remainingBalance: number;
 }

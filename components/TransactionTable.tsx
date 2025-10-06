@@ -1,7 +1,8 @@
 
+
 import React from 'react';
-import type { Transaction, Invoice, LogEntry, RecordType, InvoiceItem } from '../types';
-import { TransactionType } from '../types';
+import type { Transaction, Invoice, LogEntry, RecordType, InvoiceItem, PaymentMethod } from '../types';
+import { TransactionType, paymentMethodLabels } from '../types';
 import { TrashIcon, PencilIcon, ShoppingBagIcon } from './icons/Icons';
 
 interface TransactionTableProps {
@@ -65,8 +66,19 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                 if (t.recordType === 'invoice') {
                   const invoice = t;
                   const totalWeight = invoice.items.reduce((sum, item) => sum + item.weight, 0);
-                  const hasBalance = invoice.remainingBalance < -0.01 || invoice.remainingBalance > 0.01;
+                  // FIX: Explicitly convert `invoice.remainingBalance` to a number before performing
+                  // numerical comparisons or passing it to functions to prevent type errors.
+                  const remainingBalanceNum = Number(invoice.remainingBalance);
+                  const hasBalance = remainingBalanceNum < -0.01 || remainingBalanceNum > 0.01;
                   const rowClass = `bg-white border-b hover:bg-gray-50 ${onRowClick && hasBalance ? 'cursor-pointer transition-shadow hover:shadow-md' : ''}`;
+
+                  const paymentSummary = (invoice.payments && invoice.payments.length > 0)
+                    ? Object.entries(invoice.payments.reduce((acc, p) => {
+                        acc[p.method] = (acc[p.method] || 0) + p.amount;
+                        return acc;
+                      }, {} as Record<PaymentMethod, number>))
+                    : [];
+
 
                   return (
                      <tr 
@@ -129,8 +141,20 @@ export const TransactionTable: React.FC<TransactionTableProps> = ({ transactions
                           })()}
                         </td>
                         <td className="px-6 py-4 font-semibold text-base">{formatCurrency(invoice.netTotal)}</td>
-                        <td className="px-6 py-4 font-semibold text-green-600 text-base">{formatCurrency(invoice.amountPaid)}</td>
-                        <td className={`px-6 py-4 font-semibold text-base ${invoice.remainingBalance > 0 ? 'text-red-600' : 'text-blue-600'}`}>{formatCurrency(invoice.remainingBalance)}</td>
+                        <td className="px-6 py-4 font-semibold text-green-600 text-base">
+                            <div>{formatCurrency(invoice.amountPaid)}</div>
+                            {paymentSummary.length > 0 && (
+                                <div className="text-xs text-gray-500 font-normal mt-1 flex flex-col items-end">
+                                    {paymentSummary.map(([method, amount]) => (
+                                        (amount > 0.01 || amount < -0.01) &&
+                                        <span key={method} className="bg-gray-100 px-1.5 py-0.5 rounded">
+                                            {paymentMethodLabels[method as PaymentMethod]}: {formatCurrency(amount)}
+                                        </span>
+                                    ))}
+                                </div>
+                            )}
+                        </td>
+                        <td className={`px-6 py-4 font-semibold text-base ${remainingBalanceNum > 0 ? 'text-red-600' : 'text-blue-600'}`}>{formatCurrency(remainingBalanceNum)}</td>
                         <td className="px-6 py-4">{formatDate(invoice.date)}</td>
                         {(onDelete || onEdit) && (
                             <td className="px-6 py-4 flex items-center space-s-2">

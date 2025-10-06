@@ -1,7 +1,8 @@
 
+
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import type { Transaction, InvoiceItem, SaleType, ProductCategory, Karat, WorkmanshipType, Invoice, SaleChannel } from '../types';
-import { TransactionType } from '../types';
+import type { Transaction, InvoiceItem, SaleType, ProductCategory, Karat, WorkmanshipType, Invoice, SaleChannel, PaymentMethod, Payment } from '../types';
+import { TransactionType, paymentMethodLabels } from '../types';
 import { TransactionTable } from '../components/TransactionTable';
 import { PlusIcon, TrashIcon, PencilIcon, SparklesIcon, WhatsAppIcon, SearchIcon } from '../components/icons/Icons';
 
@@ -86,7 +87,9 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
     const [customerAddress, setCustomerAddress] = useState('');
     const [shipping, setShipping] = useState('');
     const [notes, setNotes] = useState('');
-    const [paymentAmount, setPaymentAmount] = useState('');
+    const [cashPayment, setCashPayment] = useState('');
+    const [ewalletPayment, setEwalletPayment] = useState('');
+    const [instapayPayment, setInstapayPayment] = useState('');
 
     const itemTotal = useMemo(() => {
         const numWeight = parseFloat(weight) || 0;
@@ -123,10 +126,13 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
     
     const isCreditToCustomer = useMemo(() => netInvoiceTotal < 0, [netInvoiceTotal]);
 
+    const totalPaidFromInputs = useMemo(() => {
+        return (parseFloat(cashPayment) || 0) + (parseFloat(ewalletPayment) || 0) + (parseFloat(instapayPayment) || 0);
+    }, [cashPayment, ewalletPayment, instapayPayment]);
+
     const finalAmountPaidForInvoice = useMemo(() => {
-        const payment = parseFloat(paymentAmount) || 0;
-        return isCreditToCustomer ? -payment : payment;
-    }, [paymentAmount, isCreditToCustomer]);
+        return isCreditToCustomer ? -totalPaidFromInputs : totalPaidFromInputs;
+    }, [totalPaidFromInputs, isCreditToCustomer]);
 
     const remainingBalance = useMemo(() => netInvoiceTotal - finalAmountPaidForInvoice, [netInvoiceTotal, finalAmountPaidForInvoice]);
 
@@ -180,7 +186,9 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
         setCustomerAddress('');
         setShipping('');
         setNotes('');
-        setPaymentAmount('');
+        setCashPayment('');
+        setEwalletPayment('');
+        setInstapayPayment('');
         clearForm();
         setEditingInvoiceId(null);
     }, [clearForm]);
@@ -200,7 +208,14 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
         setCustomerAddress(invoiceToEdit.customer.address);
         setShipping(String(invoiceToEdit.shipping));
         setNotes(invoiceToEdit.notes);
-        setPaymentAmount(String(Math.abs(invoiceToEdit.amountPaid)));
+        
+        const cash = invoiceToEdit.payments?.find(p => p.method === 'CASH')?.amount || 0;
+        const ewallet = invoiceToEdit.payments?.find(p => p.method === 'EWALLET')?.amount || 0;
+        const instapay = invoiceToEdit.payments?.find(p => p.method === 'INSTAPAY')?.amount || 0;
+        
+        setCashPayment(String(Math.abs(cash)));
+        setEwalletPayment(String(Math.abs(ewallet)));
+        setInstapayPayment(String(Math.abs(instapay)));
         
         clearForm();
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -298,10 +313,22 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
         if (invoiceItems.length === 0) return;
 
         const generatedDescription = invoiceItems.map(item => item.description || `${item.category === 'GOLD' ? `ذهب ${item.karat}` : 'فضة'} - ${item.weight} جرام`).join('، ');
+        
+        const payments: Payment[] = [];
+        const date = new Date(`${invoiceDate}T00:00:00`).toISOString();
+        const numCash = parseFloat(cashPayment) || 0;
+        const numEwallet = parseFloat(ewalletPayment) || 0;
+        const numInstapay = parseFloat(instapayPayment) || 0;
+
+        const paymentSign = isCreditToCustomer ? -1 : 1;
+
+        if (numCash > 0) payments.push({ amount: numCash * paymentSign, method: 'CASH', date });
+        if (numEwallet > 0) payments.push({ amount: numEwallet * paymentSign, method: 'EWALLET', date });
+        if (numInstapay > 0) payments.push({ amount: numInstapay * paymentSign, method: 'INSTAPAY', date });
 
         const invoiceData: Omit<Invoice, 'id'> = {
             type: TransactionType.SALE,
-            date: new Date(`${invoiceDate}T00:00:00`).toISOString(),
+            date: date,
             description: generatedDescription,
             amount: netInvoiceTotal,
             items: invoiceItems,
@@ -314,6 +341,7 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
             shipping: shippingCost,
             notes: notes,
             amountPaid: finalAmountPaidForInvoice,
+            payments: payments,
             netTotal: netInvoiceTotal,
             remainingBalance: remainingBalance,
         };
@@ -330,7 +358,7 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
             sendInvoiceWhatsApp(
                 customerPhone.trim(),
                 netInvoiceTotal,
-                parseFloat(paymentAmount) || 0,
+                totalPaidFromInputs,
                 remainingBalance,
                 totalWeight
             );
@@ -531,16 +559,31 @@ export const SalesPage: React.FC<SalesPageProps> = ({ sales, addSale, updateSale
                         {saleChannel === 'ONLINE' && <div className="flex justify-between items-center"><span className="font-medium text-gray-600">مصاريف الشحن:</span> <span className="font-bold text-gray-700">{formatCurrency(shippingCost)}</span></div>}
                         <div className="flex justify-between items-center text-3xl font-bold border-t pt-2 mt-2"><span className="">صافي الفاتورة:</span> <span className="text-blue-700">{formatCurrency(netInvoiceTotal)}</span></div>
                      </div>
-                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-end">
+                     
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700">{isCreditToCustomer ? 'المبلغ المدفوع للعميل' : 'المدفوع من العميل'}</label>
-                            <input type="number" value={paymentAmount} onChange={e => setPaymentAmount(e.target.value)} placeholder="0.00" className="mt-1 block w-full text-lg px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"/>
+                            <label className="block text-sm font-medium text-gray-700">{paymentMethodLabels.CASH}</label>
+                            <input type="number" value={cashPayment} onChange={e => setCashPayment(e.target.value)} placeholder="0.00" className="mt-1 block w-full text-lg px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"/>
                         </div>
-                         <div className={`${balanceDisplay.containerClass} p-3 rounded-md text-center`}>
-                            <p className={`text-sm font-medium ${balanceDisplay.labelClass}`}>{balanceDisplay.label}</p>
-                            <p className={`text-3xl font-bold ${balanceDisplay.valueClass}`}>{balanceDisplay.value}</p>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">{paymentMethodLabels.EWALLET}</label>
+                            <input type="number" value={ewalletPayment} onChange={e => setEwalletPayment(e.target.value)} placeholder="0.00" className="mt-1 block w-full text-lg px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"/>
                         </div>
-                     </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">{paymentMethodLabels.INSTAPAY}</label>
+                            <input type="number" value={instapayPayment} onChange={e => setInstapayPayment(e.target.value)} placeholder="0.00" className="mt-1 block w-full text-lg px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"/>
+                        </div>
+                    </div>
+                    
+                    <div className="bg-blue-50 p-3 rounded-md flex justify-between items-center border border-blue-200">
+                        <span className="text-lg font-bold text-blue-800">إجمالي المدفوع:</span>
+                        <span className="text-2xl font-extrabold text-blue-700">{formatCurrency(totalPaidFromInputs)}</span>
+                    </div>
+
+                    <div className={`${balanceDisplay.containerClass} p-3 rounded-md text-center`}>
+                        <p className={`text-sm font-medium ${balanceDisplay.labelClass}`}>{balanceDisplay.label}</p>
+                        <p className={`text-3xl font-bold ${balanceDisplay.valueClass}`}>{balanceDisplay.value}</p>
+                    </div>
                 </div>
 
                 {/* Action Buttons */}

@@ -7,7 +7,7 @@ import { SalesPage } from './pages/SalesPage';
 import { PurchasesPage } from './pages/PurchasesPage';
 import { TreasuryPage } from './pages/TreasuryPage';
 import { useLocalStorage } from './hooks/useLocalStorage';
-import type { Page, Transaction, Invoice, SalesSummary, Trader, TraderTransaction, PurchasesSummary, LogEntry, RecordType, TraderTransactionWithDetails, TraderCategory, InvoiceItem, Karat, SaleType, ProductCategory, WorkmanshipType, SaleChannel } from './types';
+import type { Page, Transaction, Invoice, SalesSummary, Trader, TraderTransaction, PurchasesSummary, LogEntry, RecordType, TraderTransactionWithDetails, TraderCategory, InvoiceItem, Karat, SaleType, ProductCategory, WorkmanshipType, SaleChannel, Payment, PaymentMethod } from './types';
 import { TransactionType } from './types';
 import { CashIcon, ChartPieIcon, HomeIcon, ShoppingBagIcon, DownloadIcon, UploadIcon } from './components/icons/Icons';
 
@@ -24,6 +24,32 @@ function App() {
   const [treasuryInitialView, setTreasuryInitialView] = useState<'log' | 'debts' | 'credits'>('log');
   const [recordToEditId, setRecordToEditId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // This effect runs once on mount to migrate old data.
+    // It checks if any sales invoice is missing the new `payments` array.
+    const needsMigration = sales.some(s => !s.payments);
+    if (needsMigration) {
+        console.log("Migrating sales data to include payments array...");
+        const migratedSales = sales.map(sale => {
+            if (sale.payments) return sale; // Already has it, skip.
+
+            const newPayments: Payment[] = [];
+            // If there was an amount paid, create a default 'CASH' payment record for it.
+            if (sale.amountPaid !== 0) {
+                newPayments.push({
+                    amount: sale.amountPaid,
+                    method: 'CASH', // Assume all historical payments were cash
+                    date: sale.date
+                });
+            }
+
+            return { ...sale, payments: newPayments };
+        });
+        setSales(migratedSales);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only on initial component mount.
 
   const navItems = [
     { id: 'home', label: 'الرئيسية', icon: <HomeIcon /> },
@@ -124,30 +150,36 @@ function App() {
       setRecordToEditId(null);
   };
 
-  const applyPayment = (invoiceId: string, paymentAmount: number, type: TransactionType.DEBT_PAYMENT | TransactionType.CREDIT_PAYMENT) => {
+  const applyPayment = (invoiceId: string, paymentAmount: number, paymentMethod: PaymentMethod, type: TransactionType.DEBT_PAYMENT | TransactionType.CREDIT_PAYMENT) => {
     const updatedSales = sales.map(inv => {
       if (inv.id === invoiceId) {
-        let newAmountPaid: number;
-        if (type === TransactionType.DEBT_PAYMENT) {
-          // Customer pays us, amountPaid increases.
-          newAmountPaid = inv.amountPaid + paymentAmount;
-        } else { // type === TransactionType.CREDIT_PAYMENT
-          // We pay the customer, reducing our liability. This is reflected by decreasing amountPaid.
-          newAmountPaid = inv.amountPaid - paymentAmount;
-        }
+        // Determine if payment is incoming (debt) or outgoing (credit)
+        const amount = type === TransactionType.DEBT_PAYMENT ? paymentAmount : -paymentAmount;
+        
+        const newPayment: Payment = {
+            amount,
+            method: paymentMethod,
+            date: new Date().toISOString(),
+        };
+
+        const existingPayments = inv.payments || [];
+        const newPayments = [...existingPayments, newPayment];
+        const newAmountPaid = newPayments.reduce((sum, p) => sum + p.amount, 0);
 
         return {
           ...inv,
+          payments: newPayments,
           amountPaid: newAmountPaid,
-          remainingBalance: inv.netTotal - newAmountPaid
+          remainingBalance: inv.netTotal - newAmountPaid,
         };
       }
       return inv;
     });
     setSales(updatedSales);
-    // FIX: Removed the creation of a separate transaction to prevent double-counting.
-    // The change in invoice.amountPaid is now the single source of truth for treasury calculations.
+    // The change in invoice.amountPaid is the single source of truth for treasury calculations.
+    // No separate transaction is created to prevent double-counting.
   };
+
 
   const navigateToTreasuryForInvoice = (invoice: Invoice) => {
     if (invoice.remainingBalance > 0.01) {
@@ -219,6 +251,38 @@ function App() {
     const totalOutflow = totalExpenses + totalTraderPayments;
     return totalInflow - totalOutflow;
   }, [totalCashFromSales, totalDeposits, totalExpenses, totalTraderPayments]);
+
+  const paymentMethodTotals = useMemo(() => {
+    const totals: Record<PaymentMethod, number> = {
+        CASH: 0,
+        EWALLET: 0,
+        INSTAPAY: 0
+    };
+
+    // 1. Process all payments from sales invoices
+    sales.forEach(invoice => {
+        invoice.payments?.forEach(p => {
+            if (totals[p.method] !== undefined) {
+                totals[p.method] += p.amount;
+            }
+        });
+    });
+    
+    // 2. Process general deposits and expenses
+    transactions.forEach(t => {
+        const method = t.method || 'CASH'; // Default old transactions to CASH
+        const amount = t.type === TransactionType.DEPOSIT ? t.amount : -t.amount;
+        if (totals[method] !== undefined) {
+            totals[method] += amount;
+        }
+    });
+
+    // 3. Process cash paid to traders (always cash outflow)
+    const totalTraderPaymentsValue = traderTransactions.reduce((sum, t) => sum + t.cashPayment, 0);
+    totals.CASH -= totalTraderPaymentsValue;
+    
+    return totals;
+  }, [sales, transactions, traderTransactions]);
 
     const handleExportData = useCallback((isAutoBackup: boolean = false): boolean => {
       try {
@@ -400,6 +464,7 @@ function App() {
 
                           // Create invoice if it doesn't exist
                           if (!salesMap.has(invoiceId)) {
+                              const amountPaid = Number(row['المدفوع'] || 0);
                               const newInvoice: Invoice = {
                                   id: invoiceId,
                                   type: TransactionType.SALE,
@@ -408,7 +473,8 @@ function App() {
                                   channel: channel as SaleChannel,
                                   notes: row['ملاحظات'],
                                   netTotal: Number(row['صافي الفاتورة'] || 0),
-                                  amountPaid: Number(row['المدفوع'] || 0),
+                                  amountPaid: amountPaid,
+                                  payments: amountPaid !== 0 ? [{ amount: amountPaid, method: 'CASH', date: row['تاريخ الفاتورة'] instanceof Date ? row['تاريخ الفاتورة'].toISOString() : new Date().toISOString() }] : [],
                                   remainingBalance: Number(row['المتبقي'] || 0),
                                   shipping: Number(row['الشحن'] || 0),
                                   items: [],
@@ -510,6 +576,7 @@ function App() {
                   onEditRecord={handleStartEdit}
                   onDeleteRecord={deleteRecord}
                   onInvoiceClick={navigateToTreasuryForInvoice}
+                  setActivePage={setActivePage}
                 />;
       case 'sales':
         return <SalesPage sales={sales} addSale={addRecord} updateSale={updateInvoice} deleteSale={deleteRecord} onInvoiceClick={navigateToTreasuryForInvoice} recordToEditId={recordToEditId} onDoneEditing={clearEditState} />;
@@ -531,6 +598,7 @@ function App() {
                   sales={sales} 
                   transactions={transactions} 
                   balance={treasuryBalance} 
+                  paymentMethodTotals={paymentMethodTotals}
                   applyPayment={applyPayment} 
                   addTransaction={addRecord}
                   initialView={treasuryInitialView}
@@ -547,6 +615,7 @@ function App() {
                   onEditRecord={handleStartEdit}
                   onDeleteRecord={deleteRecord}
                   onInvoiceClick={navigateToTreasuryForInvoice}
+                  setActivePage={setActivePage}
                 />;
     }
   };

@@ -1,6 +1,6 @@
 
 import React, { useState, useMemo } from 'react';
-import type { Transaction, Invoice, SalesSummary, SalesSummaryItem, PurchasesSummary, LogEntry, RecordType, Trader, TraderTransaction } from '../types';
+import type { Transaction, Invoice, SalesSummary, SalesSummaryItem, PurchasesSummary, LogEntry, RecordType, Trader, TraderTransaction, Page } from '../types';
 import { StatCard } from '../components/StatCard';
 import { TransactionTable } from '../components/TransactionTable';
 import { ChartPieIcon, ShoppingBagIcon, CashIcon, TrendingUpIcon, DocumentReportIcon, ScaleIcon, SparklesIcon, SearchIcon } from '../components/icons/Icons';
@@ -21,6 +21,7 @@ interface HomePageProps {
   onEditRecord: (id: string, type: RecordType) => void;
   onDeleteRecord: (id: string, type: RecordType | any) => void;
   onInvoiceClick: (invoice: Invoice) => void;
+  setActivePage: (page: Page) => void;
 }
 
 const formatCurrency = (amount: number) => {
@@ -64,7 +65,8 @@ export const HomePage: React.FC<HomePageProps> = ({
     traderTransactions,
     onEditRecord,
     onDeleteRecord,
-    onInvoiceClick 
+    onInvoiceClick,
+    setActivePage
 }) => {
   const [timeRange, setTimeRange] = useState<TimeRange>('all');
   const [customStartDate, setCustomStartDate] = useState('');
@@ -626,30 +628,36 @@ ${JSON.stringify(dataForAI)}
   return (
     <div className="space-y-8">
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard 
-          title="إجمالي المبيعات" 
-          value={formatCurrency(totalSales)} 
-          icon={<ChartPieIcon />} 
-          colorClass="bg-green-100 text-green-600"
-        />
-        <StatCard 
-          title="إجمالي المشتريات" 
-          value={formatCurrency(totalPurchases)} 
-          icon={<ShoppingBagIcon />} 
-          colorClass="bg-red-100 text-red-600"
-        />
+        <div onClick={() => setActivePage('sales')} className="cursor-pointer">
+          <StatCard 
+            title="إجمالي المبيعات" 
+            value={formatCurrency(totalSales)} 
+            icon={<ChartPieIcon />} 
+            colorClass="bg-green-100 text-green-600"
+          />
+        </div>
+        <div onClick={() => setActivePage('purchases')} className="cursor-pointer">
+          <StatCard 
+            title="إجمالي المشتريات" 
+            value={formatCurrency(totalPurchases)} 
+            icon={<ShoppingBagIcon />} 
+            colorClass="bg-red-100 text-red-600"
+          />
+        </div>
         <StatCard 
           title="صافي الربح" 
           value={formatCurrency(netProfit)} 
           icon={<TrendingUpIcon />} 
           colorClass={netProfitColorClass}
         />
-        <StatCard 
-          title="رصيد الخزنة" 
-          value={formatCurrency(treasuryBalance)} 
-          icon={<CashIcon />} 
-          colorClass={treasuryBalanceColorClass}
-        />
+        <div onClick={() => setActivePage('treasury')} className="cursor-pointer">
+          <StatCard 
+            title="رصيد الخزنة" 
+            value={formatCurrency(treasuryBalance)} 
+            icon={<CashIcon />} 
+            colorClass={treasuryBalanceColorClass}
+          />
+        </div>
       </div>
 
       <div className="bg-white shadow-lg rounded-xl p-4 space-y-4">
@@ -844,7 +852,7 @@ ${JSON.stringify(dataForAI)}
               {activeSummaryTab === 'silver' && (
                 <>
                     <div className="bg-gray-50 p-4 rounded-lg">
-                        <h4 className="font-bold text-lg text-gray-700 mb-2">حركة الفضة (العملاء)</h4>
+                        <h4 className="font-bold text-lg text-gray-700 mb-2">حركة الفضة</h4>
                         <div className="space-y-1">
                             <SalesSummaryDetails title="مبيعات فضة" data={salesSummary.silver} valueColorClass="text-green-600" />
                             <SalesSummaryDetails title="مشتريات فضة (مستعمل)" data={salesSummary.buyBack.silver} valueColorClass="text-red-600" />
@@ -858,106 +866,93 @@ ${JSON.stringify(dataForAI)}
 
       <div className="bg-white shadow-lg rounded-xl p-6">
         <div className="flex items-center mb-4 pb-4 border-b">
-            <ShoppingBagIcon className="text-indigo-600" size={7}/>
-            <h3 className="text-xl font-bold text-gray-800 ms-3">ملخص مشتريات التجار</h3>
+            <ShoppingBagIcon className="text-teal-600" size={7}/>
+            <h3 className="text-xl font-bold text-gray-800 ms-3">ملخص حسابات التجار</h3>
         </div>
+
         <div className="flex flex-wrap items-center gap-2 border-b-2 pb-2 mb-4">
             {traderSummaryTabs.map(tab => (
-                 <button
+                <button
                     key={tab.key}
                     onClick={() => setActiveTraderSummaryTab(tab.key)}
                     className={`px-4 py-2 text-sm font-semibold rounded-full transition-all duration-300 ${
                         activeTraderSummaryTab === tab.key
-                            ? 'bg-indigo-600 text-white shadow-md'
-                            : 'bg-gray-100 text-gray-700 hover:bg-indigo-100'
+                            ? 'bg-teal-600 text-white shadow-md'
+                            : 'bg-gray-100 text-gray-700 hover:bg-teal-100'
                     }`}
                 >
                     {tab.label}
                 </button>
             ))}
         </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-center">
-            {activeTraderSummaryTab === 'gold' && (
+             {activeTraderSummaryTab === 'gold' && (
                 <>
-                    <div className="bg-yellow-50 p-4 rounded-lg border border-yellow-200">
-                        <h4 className="font-bold text-lg text-yellow-800 mb-2">مشتريات الذهب</h4>
+                    <div className="bg-amber-50 p-4 rounded-lg border border-amber-200">
+                        <h4 className="font-bold text-lg text-amber-800 mb-2">حسابات تجار الذهب</h4>
                         <div className="space-y-1">
-                            <PurchaseSummaryDetails title="إجمالي الشغل" value={formatWeight(purchasesSummary.gold.totalWorkWeight)} />
-                            <PurchaseSummaryDetails title="إجمالي الأجور" value={formatCurrency(purchasesSummary.gold.totalWorkmanshipFee)} valueClass="text-blue-600" />
-                            <PurchaseSummaryDetails title="إجمالي الكسر" value={formatWeight(purchasesSummary.gold.totalScrapWeight)} />
-                            <PurchaseSummaryDetails 
-                                title="رصيد الذهب" 
-                                value={`${formatWeight(Math.abs(goldBalance))} ${goldBalance >= 0.001 ? 'علينا' : goldBalance <= -0.001 ? 'لهم' : ''}`} 
-                                valueClass={goldBalance >= 0.001 ? 'text-red-600' : goldBalance <= -0.001 ? 'text-green-600' : 'text-gray-800'} 
-                            />
+                            <PurchaseSummaryDetails title="إجمالي شغل مستلم" value={formatWeight(purchasesSummary.gold.totalWorkWeight)} valueClass="text-green-700" />
+                            <PurchaseSummaryDetails title="إجمالي كسر مسلم" value={formatWeight(purchasesSummary.gold.totalScrapWeight)} valueClass="text-red-700" />
+                            <PurchaseSummaryDetails title="إجمالي أجرة مستحقة" value={formatCurrency(purchasesSummary.gold.totalWorkmanshipFee)} valueClass="text-blue-700" />
+                        </div>
+                        <div className="mt-3 pt-3 border-t border-gray-300">
+                            <div className={`flex justify-between items-center rounded-md p-2 ${goldBalance >=0 ? 'bg-green-100' : 'bg-red-100'}`}>
+                                <span className="font-bold text-lg">صافي رصيد الذهب</span>
+                                <p className={`text-xl font-extrabold ${goldBalance >=0 ? 'text-green-800' : 'text-red-800'}`}>
+                                    {formatWeight(Math.abs(goldBalance))} {goldBalance >= 0 ? 'لهم' : 'عليهم'}
+                                </p>
+                            </div>
                         </div>
                     </div>
                     <SummaryChart data={goldTraderChartData} barColor="#f59e0b" dataKey="value" name="الوزن" unit="جرام" />
                 </>
-            )}
-            {activeTraderSummaryTab === 'silver' && (
+             )}
+             {activeTraderSummaryTab === 'silver' && (
                 <>
-                    <div className="bg-gray-100 p-4 rounded-lg border border-gray-200">
-                        <h4 className="font-bold text-lg text-gray-700 mb-2">مشتريات الفضة</h4>
+                    <div className="bg-slate-50 p-4 rounded-lg border border-slate-200">
+                        <h4 className="font-bold text-lg text-slate-800 mb-2">حسابات تجار الفضة</h4>
                         <div className="space-y-1">
-                            <PurchaseSummaryDetails title="إجمالي الشغل" value={formatWeight(purchasesSummary.silver.totalWorkWeight)} />
-                            <PurchaseSummaryDetails title="إجمالي النقدية المطلوبة" value={formatCurrency(purchasesSummary.silver.totalRequiredCash)} valueClass="text-blue-600" />
-                            <PurchaseSummaryDetails title="إجمالي النقدية المدفوعة" value={formatCurrency(purchasesSummary.silver.totalCashPaid)} valueClass="text-green-600" />
-                            <PurchaseSummaryDetails 
-                                title="رصيد النقدية" 
-                                value={`${formatCurrency(Math.abs(silverBalance))} ${silverBalance >= 0.01 ? 'علينا' : silverBalance <= -0.01 ? 'لهم' : ''}`} 
-                                valueClass={silverBalance >= 0.01 ? 'text-red-600' : silverBalance <= -0.01 ? 'text-green-600' : 'text-gray-800'}
-                            />
+                            <PurchaseSummaryDetails title="إجمالي قيمة الشغل" value={formatCurrency(purchasesSummary.silver.totalRequiredCash)} valueClass="text-blue-700" />
+                            <PurchaseSummaryDetails title="إجمالي نقدية مدفوعة" value={formatCurrency(purchasesSummary.silver.totalCashPaid)} valueClass="text-red-700" />
+                        </div>
+                        <div className="mt-3 pt-3 border-t border-gray-300">
+                             <div className={`flex justify-between items-center rounded-md p-2 ${silverBalance >=0 ? 'bg-red-100' : 'bg-green-100'}`}>
+                                <span className="font-bold text-lg">صافي الرصيد النقدي</span>
+                                <p className={`text-xl font-extrabold ${silverBalance >=0 ? 'text-red-800' : 'text-green-800'}`}>
+                                    {formatCurrency(Math.abs(silverBalance))} {silverBalance >= 0 ? 'علينا' : 'لهم'}
+                                </p>
+                            </div>
                         </div>
                     </div>
-                    <SummaryChart data={silverTraderChartData} barColor="#475569" dataKey="value" name="القيمة النقدية" unit="ج.م" />
+                    <SummaryChart data={silverTraderChartData} barColor="#64748b" dataKey="value" name="القيمة" unit="ج.م" />
                 </>
-            )}
+             )}
         </div>
       </div>
-      
-       <div className="bg-gradient-to-br from-indigo-500 to-blue-600 p-6 rounded-xl shadow-lg text-white">
-        <div className="flex items-center justify-between">
-            <div>
-                <h3 className="text-2xl font-bold">تحليلات ذكية بواسطة Gemini</h3>
-                <p className="opacity-80">احصل على نصائح مخصصة لتحسين أداء محلك.</p>
+
+       <div className="bg-white p-6 rounded-xl shadow-lg">
+          <div className="flex items-center mb-4">
+            <SparklesIcon className="text-purple-600" size={7} />
+            <h3 className="text-xl font-bold text-gray-800 ms-3">تحليلات ذكية</h3>
+          </div>
+          <button onClick={handleGenerateInsights} disabled={isGeneratingInsights} className="w-full bg-purple-600 text-white px-4 py-2 rounded-lg shadow hover:bg-purple-700 transition-colors disabled:bg-gray-400">
+            {isGeneratingInsights ? '...جاري إنشاء التحليلات' : 'إنشاء تحليلات للأداء'}
+          </button>
+          {insights && (
+            <div className="mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg animate-fade-in">
+              <p className="whitespace-pre-wrap text-gray-700">{insights}</p>
             </div>
-            <SparklesIcon size={10} className="text-yellow-300" />
-        </div>
-        <div className="mt-4">
-            <button
-                onClick={handleGenerateInsights}
-                disabled={isGeneratingInsights}
-                className="w-full bg-white text-blue-600 font-bold py-3 px-6 rounded-lg shadow-md hover:bg-gray-100 disabled:bg-gray-300 disabled:cursor-not-allowed transition-all flex items-center justify-center"
-            >
-                {isGeneratingInsights ? (
-                    <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-600"></div>
-                ) : (
-                    <>
-                        <SparklesIcon size={5} className="me-2" />
-                        <span>{insights ? 'إعادة إنشاء التحليل' : 'إنشاء تحليل الآن'}</span>
-                    </>
-                )}
-            </button>
-        </div>
-        {insights && (
-            <div className="mt-4 bg-black bg-opacity-20 p-4 rounded-lg animate-fade-in">
-                <h4 className="font-bold mb-2">نصائح مخصصة لك:</h4>
-                <div className="whitespace-pre-wrap text-sm space-y-2">
-                    {insights.split('\n').map((line, index) => <p key={index}>{line}</p>)}
-                </div>
-            </div>
-        )}
-      </div>
+          )}
+       </div>
 
       <TransactionTable 
         transactions={filteredTransactions} 
-        title={transactionTableTitle} 
-        colorClass="bg-gray-100"
         onDelete={onDeleteRecord}
         onEdit={onEditRecord}
+        title={transactionTableTitle}
+        colorClass="bg-gray-100"
         onRowClick={(item) => {
-// FIX: Check for recordType to correctly identify an invoice and pass it to onInvoiceClick.
             if (item.recordType === 'invoice') {
                 onInvoiceClick(item);
             }
@@ -966,7 +961,7 @@ ${JSON.stringify(dataForAI)}
             <div className="relative">
                 <input
                     type="text"
-                    placeholder="ابحث بالاسم، هاتف، أو وصف..."
+                    placeholder="ابحث بالاسم أو الهاتف أو الوصف..."
                     value={searchQuery}
                     onChange={e => setSearchQuery(e.target.value)}
                     className="w-full sm:w-72 p-2 ps-10 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
